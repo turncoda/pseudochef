@@ -1,59 +1,64 @@
-=======
- Setup
-=======
+SETUP
 
---- Install the Pseudoregalia TrenchBroom game config ---
+    1. Install the Pseudoregalia TrenchBroom game config
 
-    The "Pseudoregalia" folder in this archive is the TrenchBroom game config;
-    editor settings, entity definitions, etc. Copy it to your TrenchBroom user
-    config under "games". For example, on Windows, it should look like this:
+        The "Pseudoregalia" folder in this archive is the TrenchBroom game
+        config; editor settings, entity definitions, etc. Copy it to your
+        TrenchBroom user config under "games". For example, on Windows, it
+        should look like this:
 
-        C:\Users\<name>\AppData\Roaming\TrenchBroom\games\Pseudoregalia
+            C:\Users\<name>\AppData\Roaming\TrenchBroom\games\Pseudoregalia
 
-    You can check that you did it correctly if you now see a game preset for
-    "Pseudoregalia" when you start a new map in TrenchBroom.
+        You can check that you did it correctly if you now see a game preset
+        for "Pseudoregalia" when you start a new map in TrenchBroom.
 
-    Note that TrenchBroom's config folder is platform-dependent:
+        Note that TrenchBroom's config folder is platform-dependent:
 
-        Windows	C:\Users\<name>\AppData\Roaming\TrenchBroom
-        macOS	~/Library/Application Support/TrenchBroom
-        Linux	~/.TrenchBroom
+            Windows	C:\Users\<name>\AppData\Roaming\TrenchBroom
+            macOS	~/Library/Application Support/TrenchBroom
+            Linux	~/.TrenchBroom
 
---- Tell TrenchBroom where your game directory and build tools are ---
+    2. Tell TrenchBroom where your game directory and build tools are
 
-    The next time you open TrenchBroom, go to Preferences. Select the
-    'Pseudoregalia' profile in the list on the left. Locate your game's
-    directory and put it in the box labeled 'Game Path'. For example, my game
-    path is:
+        The next time you open TrenchBroom, go to Preferences. Select the
+        'Pseudoregalia' profile in the list on the left. Locate your game's
+        directory and put it in the box labeled 'Game Path'. For example, my
+        game path is:
 
-        C:\Program Files (x86)\Steam\steamapps\common\Pseudoregalia\
+            C:\Program Files (x86)\Steam\steamapps\common\Pseudoregalia\
 
-    Under 'Compilation Tools', for 'pseudochef', put in the path to
-    'pseudochef.exe'. For 'quickstart', put in the path to 'quickstart_p.pak'.
+        Under 'Compilation Tools', for 'pseudochef', put in the path to
+        'pseudochef.exe'.
 
-    This step sets important variables that are critical for the next step to
-    work correctly.
+        This step sets important variables that are critical for the next step
+        to work correctly.
 
---- Edit the map, build it and load it into the game ---
+    3. Install quickstart mod
 
-    Go ahead and make some changes to the map. Make sure to save, or the next
-    step won't work.
+        To be able to run the game with command-line arguments, download and
+        install the quickstart mod, available on Nexus:
 
-    Now under 'Run', click 'Compile Map...'. You should see the compilation
-    profile I've prepared. If you've done the previous step correctly, and
-    you've saved your map somewhere, clicking 'Compile' will build the map into
-    a .pak file, install it into your game path, and load it up in the game.
+            https://www.nexusmods.com/pseudoregalia/mods/113
 
-======
- Help
-======
+    4. Edit the map, build it and load it into the game
+
+        Go ahead and make some changes to the map. Make sure to save, or the
+        next step won't work.
+
+        Now under 'Run', click 'Compile Map...'. You should see a compilation
+        profile already prepared for you. If you've done all of the previous
+        steps correctly, and you've saved your map somewhere, clicking
+        'Compile' now will build the map into a .pak file, install it into your
+        game path, and load it up in the game (using command-line arguments
+        which only work with quickstart mod).
+
+HELP
 
     For information on how the various entities work and interact with each
-    other, see the help text in the Entity tab on the right.
+    other, select an entity in the editor view and refer to the help text in
+    the Entity tab on the right side of the TrenchBroom UI.
 
-=======
- Notes
-=======
+NOTES
 
     If you encounter any bugs, please report them at:
 
@@ -64,4 +69,4 @@
 
     Have fun making maps!
 
-        ~ turncoda  2026.07.28
+                                                        ~ turncoda  2026.07.30
