@@ -289,6 +289,38 @@ fn add_static_mesh_import<C: Read + Seek>(
     umap.add_import(import2c)
 }
 
+fn add_material_import<C: Read + Seek>(
+    umap: &mut unreal_asset::Asset<C>,
+    path: &str,
+) -> PackageIndex {
+    let path = format!("/{path}");
+    let last_slash_idx = path
+        .rfind('/')
+        .unwrap_or_else(|| panic!("invalid input to add_static_mesh_import: \"{}\"", path));
+    // Hardcode to find M64_CheckerTile as reference
+    let idx1 = find_import(
+        umap,
+        "Package",
+        "/Game/MatTex/Materials/Env/Floor/M64_CheckerTile",
+    )
+    .unwrap();
+    let idx2 = find_import(umap, "Material", "M64_CheckerTile").unwrap();
+
+    // Clone 'Package' import (contains actual absolute path to asset in pak)
+    let mut import1c = umap.get_import(idx1).unwrap().clone();
+    import1c.object_name = umap.add_fname(&path);
+    let idx1c = umap.add_import(import1c);
+
+    // Clone 'Material' import, which should reference 'Package' import
+    let mut import2c = umap.get_import(idx2).unwrap().clone();
+    let basename = &path[last_slash_idx + 1..];
+    import2c.object_name = umap.add_fname(basename);
+    import2c.outer_index = idx1c;
+
+    // Return the index of the newly-added import.
+    umap.add_import(import2c)
+}
+
 fn add_save_point<C: Read + Seek>(
     umap: &mut unreal_asset::Asset<C>,
     location: DVec3,
@@ -458,7 +490,7 @@ fn add_static_mesh_actor<C: Read + Seek>(
     umap: &mut unreal_asset::Asset<C>,
     import_idx: PackageIndex,
     origin: DVec3,
-) {
+) -> &mut unreal_asset::Export<PackageIndex> {
     let idx2 = find_original_static_mesh_actor(umap);
     let idx3 = deep_clone_export(umap, idx2);
     add_actor_to_level(umap, idx3);
@@ -467,6 +499,7 @@ fn add_static_mesh_actor<C: Read + Seek>(
     let export4 = get_linked_export_mut(umap, idx3, "StaticMeshComponent").unwrap();
     set_obj_property(export4, "StaticMesh", import_idx);
     set_location(export4, origin);
+    export4
 }
 
 fn tb_vec3_to_ue_dvec3(s: &str) -> DVec3 {
@@ -525,8 +558,22 @@ fn main() {
                     let name = format!("WorldBrush{}", num_world_brushes);
                     let (abs_path, origin) =
                         pak_add_brush(&mut pak, brush, &map_name, &name).unwrap();
-                    let idx = add_static_mesh_import(&mut umap, &abs_path);
-                    add_static_mesh_actor(&mut umap, idx, origin);
+                    let mesh = add_static_mesh_import(&mut umap, &abs_path);
+                    // with the cooking code as is we can't use multiple materials until we sort faces by material
+                    let mat = add_material_import(&mut umap, &brush.0[0].texture);
+                    let comp = add_static_mesh_actor(&mut umap, mesh, origin);
+                    let props = &mut comp.get_normal_export_mut().unwrap().properties;
+                    for prop in props {
+                        let unreal_asset::properties::Property::ArrayProperty(arr) = prop else {
+                            continue;
+                        };
+                        let unreal_asset::properties::Property::ObjectProperty(obj) =
+                            &mut arr.value[0]
+                        else {
+                            continue;
+                        };
+                        obj.value = mat;
+                    }
                 }
             }
             "trigger_safe_zone" => {
