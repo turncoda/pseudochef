@@ -293,10 +293,6 @@ fn add_material_import<C: Read + Seek>(
     umap: &mut unreal_asset::Asset<C>,
     path: &str,
 ) -> PackageIndex {
-    let path = format!("/{path}");
-    let last_slash_idx = path
-        .rfind('/')
-        .unwrap_or_else(|| panic!("invalid input to add_static_mesh_import: \"{}\"", path));
     // Hardcode to find M64_CheckerTile as reference
     let idx1 = find_import(
         umap,
@@ -305,6 +301,14 @@ fn add_material_import<C: Read + Seek>(
     )
     .unwrap();
     let idx2 = find_import(umap, "Material", "M64_CheckerTile").unwrap();
+    if path == "__TB_empty" {
+        return idx2;
+    }
+
+    let path = format!("/{path}");
+    let last_slash_idx = path
+        .rfind('/')
+        .unwrap_or_else(|| panic!("invalid input to add_static_mesh_import: \"{}\"", path));
 
     // Clone 'Package' import (contains actual absolute path to asset in pak)
     let mut import1c = umap.get_import(idx1).unwrap().clone();
