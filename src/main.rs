@@ -20,44 +20,44 @@ use unreal_asset_ext::{deep_clone_export, deep_delete_export};
 mod obj_export;
 
 const MISE_FILES: &[(&str, &[u8])] = &[
-    ("BP_Hazard.uasset", include_bytes!("mise/BP_Hazard.uasset")),
-    ("BP_Hazard.uexp", include_bytes!("mise/BP_Hazard.uexp")),
+    ("BP_Hazard.uasset", include_bytes!("base/ModPack_Base/BP_Hazard.uasset")),
+    ("BP_Hazard.uexp", include_bytes!("base/ModPack_Base/BP_Hazard.uexp")),
     (
         "BP_SafeZone.uasset",
-        include_bytes!("mise/BP_SafeZone.uasset"),
+        include_bytes!("base/ModPack_Base/BP_SafeZone.uasset"),
     ),
-    ("BP_SafeZone.uexp", include_bytes!("mise/BP_SafeZone.uexp")),
+    ("BP_SafeZone.uexp", include_bytes!("base/ModPack_Base/BP_SafeZone.uexp")),
     (
         "M_SafeZone_Inst.uasset",
-        include_bytes!("mise/M_SafeZone_Inst.uasset"),
+        include_bytes!("base/ModPack_Base/M_SafeZone_Inst.uasset"),
     ),
     (
         "M_SafeZone_Inst.uexp",
-        include_bytes!("mise/M_SafeZone_Inst.uexp"),
+        include_bytes!("base/ModPack_Base/M_SafeZone_Inst.uexp"),
     ),
     (
         "M_SafeZone.uasset",
-        include_bytes!("mise/M_SafeZone.uasset"),
+        include_bytes!("base/ModPack_Base/M_SafeZone.uasset"),
     ),
-    ("M_SafeZone.uexp", include_bytes!("mise/M_SafeZone.uexp")),
-    ("M_HazMat.uasset", include_bytes!("mise/M_HazMat.uasset")),
-    ("M_HazMat.uexp", include_bytes!("mise/M_HazMat.uexp")),
+    ("M_SafeZone.uexp", include_bytes!("base/ModPack_Base/M_SafeZone.uexp")),
+    ("M_HazMat.uasset", include_bytes!("base/ModPack_Base/M_HazMat.uasset")),
+    ("M_HazMat.uexp", include_bytes!("base/ModPack_Base/M_HazMat.uexp")),
     (
         "SM_ExampleBox.uasset",
-        include_bytes!("mise/SM_ExampleBox.uasset"),
+        include_bytes!("base/ModPack_Base/SM_ExampleBox.uasset"),
     ),
     (
         "SM_ExampleBox.uexp",
-        include_bytes!("mise/SM_ExampleBox.uexp"),
+        include_bytes!("base/ModPack_Base/SM_ExampleBox.uexp"),
     ),
     (
         "SM_ExampleBox.ubulk",
-        include_bytes!("mise/SM_ExampleBox.ubulk"),
+        include_bytes!("base/ModPack_Base/SM_ExampleBox.ubulk"),
     ),
 ];
 
-const MISE_UMAP: &[u8] = include_bytes!("mise/mise.umap");
-const MISE_UEXP: &[u8] = include_bytes!("mise/mise.uexp");
+const MISE_UMAP: &[u8] = include_bytes!("base/ModPack_Base.umap");
+const MISE_UEXP: &[u8] = include_bytes!("base/ModPack_Base.uexp");
 
 // World-space (map-unit) spacing between generated interior face vertices;
 // see `brush_to_mesh::convert_to_mesh`. Smaller values give smoother
@@ -271,7 +271,7 @@ fn add_static_mesh_import<C: Read + Seek>(
         .rfind('/')
         .unwrap_or_else(|| panic!("invalid input to add_static_mesh_import: \"{}\"", path));
     // Hardcode to find SM_ExampleBox and use it as the reference import.
-    let idx1 = find_import(umap, "Package", "/Game/Mods/Maps/mise/SM_ExampleBox").unwrap();
+    let idx1 = find_import(umap, "Package", "/Game/Mods/Maps/ModPack_Base/SM_ExampleBox").unwrap();
     let idx2 = find_import(umap, "StaticMesh", "SM_ExampleBox").unwrap();
 
     // Clone 'Package' import (contains actual absolute path to asset in pak)
@@ -596,7 +596,7 @@ fn main() {
     // rename level export (for swag only; seemingly inconsequential)
     {
         let fname = umap.add_fname(&map_name);
-        let idx = find_export(&umap, &[with_name("mise")]).expect("couldn't find mise");
+        let idx = find_export(&umap, &[with_name("ModPack_Base")]).expect("couldn't find export: ModPack_Base");
         let export = umap.get_export_mut(idx).unwrap();
         export.get_base_export_mut().object_name = fname;
     }
@@ -625,7 +625,6 @@ fn main() {
     std::fs::write("dbg.umap", final_umap.get_ref()).unwrap();
     std::fs::write("dbg.uexp", final_uexp.get_ref()).unwrap();
 
-    // TODO also rename mise export
     let umap_path = format!("Mods/Maps/{}.umap", map_name);
     let uexp_path = format!("Mods/Maps/{}.uexp", map_name);
     pak.write_file(&umap_path, true, final_umap.get_ref())
@@ -634,7 +633,7 @@ fn main() {
         .expect("failed to write uexp to pak");
 
     for (name, bytes) in MISE_FILES {
-        let path = format!("Mods/Maps/mise/{}", name);
+        let path = format!("Mods/Maps/ModPack_Base/{}", name);
         pak.write_file(&path, true, bytes)
             .unwrap_or_else(|_| panic!("failed to write {} to pak", name));
     }
