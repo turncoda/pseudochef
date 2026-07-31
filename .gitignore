@@ -1,3 +1,14 @@
 /target
-/*.pak
 /pseudocooker/target
+
+/*.umap
+/*.uexp
+/*.pak
+/*.exe
+
+/static/*.exe
+/static/*.zip
+
+# TrenchBroom
+/autosave
+/*.map
