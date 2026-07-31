@@ -20,13 +20,22 @@ use unreal_asset_ext::{deep_clone_export, deep_delete_export};
 mod obj_export;
 
 const MISE_FILES: &[(&str, &[u8])] = &[
-    ("BP_Hazard.uasset", include_bytes!("base/ModPack_Base/BP_Hazard.uasset")),
-    ("BP_Hazard.uexp", include_bytes!("base/ModPack_Base/BP_Hazard.uexp")),
+    (
+        "BP_Hazard.uasset",
+        include_bytes!("base/ModPack_Base/BP_Hazard.uasset"),
+    ),
+    (
+        "BP_Hazard.uexp",
+        include_bytes!("base/ModPack_Base/BP_Hazard.uexp"),
+    ),
     (
         "BP_SafeZone.uasset",
         include_bytes!("base/ModPack_Base/BP_SafeZone.uasset"),
     ),
-    ("BP_SafeZone.uexp", include_bytes!("base/ModPack_Base/BP_SafeZone.uexp")),
+    (
+        "BP_SafeZone.uexp",
+        include_bytes!("base/ModPack_Base/BP_SafeZone.uexp"),
+    ),
     (
         "M_SafeZone_Inst.uasset",
         include_bytes!("base/ModPack_Base/M_SafeZone_Inst.uasset"),
@@ -39,9 +48,18 @@ const MISE_FILES: &[(&str, &[u8])] = &[
         "M_SafeZone.uasset",
         include_bytes!("base/ModPack_Base/M_SafeZone.uasset"),
     ),
-    ("M_SafeZone.uexp", include_bytes!("base/ModPack_Base/M_SafeZone.uexp")),
-    ("M_HazMat.uasset", include_bytes!("base/ModPack_Base/M_HazMat.uasset")),
-    ("M_HazMat.uexp", include_bytes!("base/ModPack_Base/M_HazMat.uexp")),
+    (
+        "M_SafeZone.uexp",
+        include_bytes!("base/ModPack_Base/M_SafeZone.uexp"),
+    ),
+    (
+        "M_HazMat.uasset",
+        include_bytes!("base/ModPack_Base/M_HazMat.uasset"),
+    ),
+    (
+        "M_HazMat.uexp",
+        include_bytes!("base/ModPack_Base/M_HazMat.uexp"),
+    ),
     (
         "SM_ExampleBox.uasset",
         include_bytes!("base/ModPack_Base/SM_ExampleBox.uasset"),
@@ -271,7 +289,12 @@ fn add_static_mesh_import<C: Read + Seek>(
         .rfind('/')
         .unwrap_or_else(|| panic!("invalid input to add_static_mesh_import: \"{}\"", path));
     // Hardcode to find SM_ExampleBox and use it as the reference import.
-    let idx1 = find_import(umap, "Package", "/Game/Mods/Maps/ModPack_Base/SM_ExampleBox").unwrap();
+    let idx1 = find_import(
+        umap,
+        "Package",
+        "/Game/Mods/Maps/ModPack_Base/SM_ExampleBox",
+    )
+    .unwrap();
     let idx2 = find_import(umap, "StaticMesh", "SM_ExampleBox").unwrap();
 
     // Clone 'Package' import (contains actual absolute path to asset in pak)
@@ -596,7 +619,8 @@ fn main() {
     // rename level export (for swag only; seemingly inconsequential)
     {
         let fname = umap.add_fname(&map_name);
-        let idx = find_export(&umap, &[with_name("ModPack_Base")]).expect("couldn't find export: ModPack_Base");
+        let idx = find_export(&umap, &[with_name("ModPack_Base")])
+            .expect("couldn't find export: ModPack_Base");
         let export = umap.get_export_mut(idx).unwrap();
         export.get_base_export_mut().object_name = fname;
     }
@@ -617,6 +641,43 @@ fn main() {
         }
     }
 
+    // Design decision: any assets from mod packs that are used in this map are to be bundled with
+    // the map rather than be left referencing the mod pack itself, lest we open the door to broken
+    // references, mod pack version mismatch, etc. In other words, we're opting for static linking,
+    // not dynamic linking. Of course, this unfortunately means larger map pak sizes!
+
+    // Rewrite mod pack Package imports to reference bundled assets, part 1
+    // Collect indexes of
+    let mut package_imports_to_rewrite = vec![];
+    for (i, import) in umap.imports.iter_mut().enumerate() {
+        if import
+            .class_name
+            .get_content(|content| content != "Package")
+        {
+            continue;
+        }
+        if import
+            .object_name
+            .get_content(|content| content.contains("ModPack_Base"))
+        {
+            package_imports_to_rewrite.push((i, import.object_name.get_owned_content()));
+        }
+    }
+
+    // Rewrite mod pack Package imports to reference bundled assets, part 2
+    for (i, orig_path) in package_imports_to_rewrite {
+        let patched_path = orig_path.replacen("ModPack_Base", &map_name, 1);
+        let fname = umap.add_fname(&patched_path);
+        let import = &mut umap.imports[i];
+        import.object_name = fname;
+        println!(
+            "Rewrote import {}: '{}' -> '{}'",
+            -((i + 1) as i32),
+            orig_path,
+            patched_path
+        );
+    }
+
     let mut final_umap = std::io::Cursor::new(vec![]);
     let mut final_uexp = std::io::Cursor::new(vec![]);
     umap.write_data(&mut final_umap, Some(&mut final_uexp))
@@ -633,7 +694,7 @@ fn main() {
         .expect("failed to write uexp to pak");
 
     for (name, bytes) in MISE_FILES {
-        let path = format!("Mods/Maps/ModPack_Base/{}", name);
+        let path = format!("Mods/Maps/{}/{}", map_name, name);
         pak.write_file(&path, true, bytes)
             .unwrap_or_else(|_| panic!("failed to write {} to pak", name));
     }
