@@ -43,6 +43,7 @@
         "chargeAttack" : "Strikebreak"
         "extraKick" : "Heliacal Power"
     ]
+    quick_pickup(boolean) : : 1 : "Skip game-pausing upgrade pickup dialog."
 ]
 
 @SolidClass = trigger_hazard_zone :
