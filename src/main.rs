@@ -202,6 +202,32 @@ fn find_vec_property_mut<'a>(
     result
 }
 
+#[derive(Default)]
+struct UpgradeData {
+    id: i32,
+    display_name: String,
+    model: PackageIndex,
+    powerup_tier: i32,
+    instructions: String,
+    description: String,
+    extended_description: String,
+    display_image: PackageIndex,
+}
+
+fn get_default_upgrade_data(key: &str) -> Option<UpgradeData> {
+    match key {
+        "attack" => Some(UpgradeData::default()),
+        _ => None
+    }
+}
+
+fn set_upgrade_data<'a>(
+    export: &'a mut unreal_asset::Export<PackageIndex>,
+    upgrade_data: UpgradeData,
+) {
+    // TODO
+}
+
 fn find_obj_property<'a>(
     export: &'a unreal_asset::Export<PackageIndex>,
     name: &str,
@@ -382,6 +408,10 @@ fn add_upgrade<C: Read + Seek>(
 
     let export = umap.get_export_mut(idx).unwrap();
     set_text_property(export, "rowName", upgrade_name);
+
+    let mut upgrade_data = get_default_upgrade_data(upgrade_name).unwrap_or(UpgradeData::default());
+    // TODO override here
+    set_upgrade_data(export, upgrade_data);
 
     let root = get_linked_export_mut(umap, idx, "RootComponent").unwrap();
     set_location(root, location);
