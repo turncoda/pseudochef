@@ -1,4 +1,7 @@
-#[derive(Default)]
+use unreal_asset::exports::ExportNormalTrait;
+use unreal_asset::types::PackageIndex;
+
+#[derive(Default, Debug)]
 pub struct UpgradeData {
     pub id: i32,
     pub display_name: String,
@@ -7,6 +10,62 @@ pub struct UpgradeData {
     pub description: String,
     pub extended_description: String,
     pub display_image: String,
+}
+
+fn find_struct_property_mut<'a>(
+    export: &'a mut unreal_asset::Export<PackageIndex>,
+    name: &str,
+) -> Option<&'a mut unreal_asset::properties::struct_property::StructProperty> {
+    let mut result = None;
+    let props = &mut export.get_normal_export_mut().unwrap().properties;
+    for prop in props {
+        if let unreal_asset::properties::Property::StructProperty(struct_prop) = prop
+            && struct_prop.name.get_content(|content| content == name)
+        {
+            result = Some(struct_prop);
+        }
+    }
+    result
+}
+
+pub fn set_upgrade_data<'a>(
+    export: &'a mut unreal_asset::Export<PackageIndex>,
+    upgrade_data: UpgradeData,
+) {
+    let prop = find_struct_property_mut(export, "upgradeData").unwrap();
+    for prop in &mut prop.value {
+        if let unreal_asset::properties::Property::TextProperty(text_prop) = prop {
+            let key: String = text_prop.name.get_owned_content();
+            let value = match key.as_ref() {
+                "DisplayName_10_28DC975D40CA7D015C488485EC89AF36" => &upgrade_data.display_name,
+                "Instructions_17_A2BE3D8F4B1ADC98F9B35CAADB8B61D5" => &upgrade_data.instructions,
+                "Description_18_B60793FD498439DB9A403CBD619DE9F0" => &upgrade_data.description,
+                "ExtendedDescription_22_FA4653E041E5216157FF7998802317B9" => {
+                    &upgrade_data.extended_description
+                }
+                _ => panic!("unhandled text property key: {}", key),
+            };
+            text_prop.culture_invariant_string = Some(value.to_string());
+        }
+        if let unreal_asset::properties::Property::IntProperty(int_prop) = prop {
+            let key: String = int_prop.name.get_owned_content();
+            let value = match key.as_ref() {
+                "ID_9_B00677A74523CD5A81278D9E39D20FDE" => upgrade_data.id,
+                "PowerupTier_26_A6DCAEEA473ADF8C601BC7A5C76D31FB" => upgrade_data.powerup_tier,
+                _ => panic!("unhandled int property key: {}", key),
+            };
+            int_prop.value = value;
+        }
+        if let unreal_asset::properties::Property::ObjectProperty(obj_prop) = prop {
+            let key: String = obj_prop.name.get_owned_content();
+            let value = match key.as_ref() {
+                "DisplayImage_30_ECF7EFC64CBA612E75C67B946B8DD873" => &upgrade_data.display_image,
+                _ => panic!("unhandled object property key: {}", key),
+            };
+            // TODO lazy add import if needed
+            //obj_prop.value = value;
+        }
+    }
 }
 
 pub fn get_upgrade_data(key: &str) -> UpgradeData {
@@ -116,7 +175,15 @@ pub fn get_upgrade_data(key: &str) -> UpgradeData {
             "",
             "icon_slideJump",
         ),
-        "guard" => ud(10, "Defender", 0, "Press Y Button/Ctrl", "debug option", "", ""),
+        "guard" => ud(
+            10,
+            "Defender",
+            0,
+            "Press Y Button/Ctrl",
+            "debug option",
+            "",
+            "",
+        ),
         "chargeAttack" => ud(
             11,
             "Strikebreak",
@@ -210,7 +277,15 @@ pub fn get_upgrade_data(key: &str) -> UpgradeData {
         "outfitPro" => ud(30, "Professionalism", 1, "Gained a new outfit!", "", "", ""),
         "outfitShoujo" => ud(31, "a Guardian", 1, "Gained a new outfit!", "", "", ""),
         "outfitKnight" => ud(32, "Chivalry", 1, "Gained a new outfit!", "", "", ""),
-        "outfitPast" => ud(33, "a Bleeding Heart", 1, "Gained a new outfit!", "", "", ""),
+        "outfitPast" => ud(
+            33,
+            "a Bleeding Heart",
+            1,
+            "Gained a new outfit!",
+            "",
+            "",
+            "",
+        ),
         "outfitJam" => ud(34, "Nostalgia ", 1, "Gained a new outfit!", "", "", ""),
         "outfitFaith" => ud(35, "Devotion", 1, "Gained a new outfit!", "", "", ""),
         "outfitClassy" => ud(36, "Class", 1, "Gained a new outfit!", "", "", ""),

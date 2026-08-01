@@ -16,7 +16,7 @@ mod unreal_asset_ext;
 use unreal_asset_ext::{deep_clone_export, deep_delete_export};
 
 mod upgrade_data;
-use upgrade_data::{UpgradeData, get_upgrade_data};
+use upgrade_data::{get_upgrade_data, set_upgrade_data};
 
 // For debugging purposes; may not be called
 #[allow(dead_code)]
@@ -205,13 +205,6 @@ fn find_vec_property_mut<'a>(
     result
 }
 
-fn set_upgrade_data<'a>(
-    export: &'a mut unreal_asset::Export<PackageIndex>,
-    upgrade_data: UpgradeData,
-) {
-    // TODO
-}
-
 fn find_obj_property<'a>(
     export: &'a unreal_asset::Export<PackageIndex>,
     name: &str,
@@ -393,9 +386,11 @@ fn add_upgrade<C: Read + Seek>(
     let export = umap.get_export_mut(idx).unwrap();
     set_text_property(export, "rowName", upgrade_name);
 
-    let mut upgrade_data = get_upgrade_data(upgrade_name);
-    // TODO override here
-    set_upgrade_data(export, upgrade_data);
+    {
+        let mut upgrade_data = get_upgrade_data(upgrade_name);
+        // TODO override here
+        set_upgrade_data(export, upgrade_data);
+    }
 
     let root = get_linked_export_mut(umap, idx, "RootComponent").unwrap();
     set_location(root, location);
