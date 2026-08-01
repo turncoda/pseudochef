@@ -22,7 +22,7 @@
     "You can target a player_start by putting its 'tag' into this " +
     "entity's 'target' property."
 [
-    target(target_destination) : "Target"
+    target(target_destination) : "Target (player_start)"
 ]
 
 @PointClass = misc_jump_bubble : "Jump bubble." []
@@ -37,5 +37,5 @@
     "State is not preserved on reload." +
     "Can target a respawn_anchor if respawn location needs to be tweaked."
 [
-    target(target_destination) : "Target"
+    target(target_destination) : "Target (respawn_anchor)"
 ]
