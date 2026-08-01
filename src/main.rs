@@ -218,6 +218,22 @@ fn find_obj_property<'a>(
     result
 }
 
+fn find_text_property_mut<'a>(
+    export: &'a mut unreal_asset::Export<PackageIndex>,
+    key: &str,
+) -> Option<&'a mut unreal_asset::properties::str_property::TextProperty> {
+    let mut result = None;
+    let props = &mut export.get_normal_export_mut().unwrap().properties;
+    for prop in props {
+        if let unreal_asset::properties::Property::TextProperty(text_prop) = prop
+            && text_prop.name.get_content(|content| content == key)
+        {
+            result = Some(text_prop);
+        }
+    }
+    result
+}
+
 fn find_name_property_mut<'a>(
     export: &'a mut unreal_asset::Export<PackageIndex>,
     key: &str,
@@ -355,6 +371,24 @@ fn add_jump_bubble<C: Read + Seek>(umap: &mut unreal_asset::Asset<C>, location: 
     set_location(root, location);
 }
 
+fn add_upgrade<C: Read + Seek>(
+    umap: &mut unreal_asset::Asset<C>,
+    location: DVec3,
+    upgrade_name: &str,
+) -> PackageIndex {
+    let idx = find_export(umap, &[with_name("BP_UpgradeBase_C")]).unwrap();
+    let idx = deep_clone_export(umap, idx);
+    add_actor_to_level(umap, idx);
+
+    let export = umap.get_export_mut(idx).unwrap();
+    set_text_property(export, "rowName", upgrade_name);
+
+    let root = get_linked_export_mut(umap, idx, "RootComponent").unwrap();
+    set_location(root, location);
+
+    idx
+}
+
 fn add_player_start<C: Read + Seek>(
     umap: &mut unreal_asset::Asset<C>,
     location: DVec3,
@@ -437,6 +471,11 @@ fn get_linked_export_mut<'a, C: Read + Seek>(
     umap.get_export_mut(prop.value)
 }
 
+fn set_text_property(export: &mut unreal_asset::Export<PackageIndex>, key: &str, value: &str) {
+    let prop = find_text_property_mut(export, key).unwrap();
+    prop.culture_invariant_string = Some(value.to_string());
+}
+
 fn set_name_property(
     export: &mut unreal_asset::Export<PackageIndex>,
     key: &str,
@@ -493,8 +532,7 @@ fn set_vec_property(export: &mut unreal_asset::Export<PackageIndex>, name: &str,
 }
 
 fn get_vec_property(export: &unreal_asset::Export<PackageIndex>, name: &str) -> DVec3 {
-    let prop =
-        find_vec_property(export, name).expect(&format!("couldn't find property: {}", name));
+    let prop = find_vec_property(export, name).expect(&format!("couldn't find property: {}", name));
     DVec3::new(prop.value.x.0, prop.value.y.0, prop.value.z.0)
 }
 
@@ -634,6 +672,11 @@ fn main() {
                 let idx = add_player_start(&mut umap, origin, angle, tag);
                 player_starts.insert(tag.to_string(), idx);
             }
+            "item_upgrade" => {
+                let origin = tb_vec3_to_ue_dvec3(props.get("origin").unwrap_or(&"0 0 0"));
+                let upgrade_name = props.get("upgrade").unwrap_or(&"attack");
+                add_upgrade(&mut umap, origin, upgrade_name);
+            }
             "misc_jump_bubble" => {
                 let origin = tb_vec3_to_ue_dvec3(props.get("origin").unwrap_or(&"0 0 0"));
                 add_jump_bubble(&mut umap, origin);
@@ -688,7 +731,10 @@ fn main() {
         } else {
             DVec3::default()
         };
-        println!("safe_zone @{}: respawn_anchor w/ relative offset {}", idx, offset);
+        println!(
+            "safe_zone @{}: respawn_anchor w/ relative offset {}",
+            idx, offset
+        );
 
         set_vec_property(umap.get_export_mut(idx).unwrap(), "offset", offset);
     }
@@ -709,6 +755,7 @@ fn main() {
             find_export(&umap, &[with_name("BP_SafeZone_C")]).unwrap(),
             find_export(&umap, &[with_name("BP_SavePoint_C")]).unwrap(),
             find_export(&umap, &[with_name("BP_JumpBubble_C")]).unwrap(),
+            find_export(&umap, &[with_name("BP_UpgradeBase_C")]).unwrap(),
             find_export(&umap, &[with_name("PlayerStart")]).unwrap(),
             find_original_static_mesh_actor(&umap),
         ];

@@ -26,6 +26,24 @@
 ]
 
 @PointClass = misc_jump_bubble : "Jump bubble." []
+@PointClass = item_upgrade :
+    "Upgrade pickup."
+[
+    upgrade(choices) : "Upgrade" : "attack" : "" =
+    [
+        "attack" : "Dream Breaker"
+        "wallRide" : "Cling Gem"
+        "airKick" : "Sun Greaves"
+        "slide" : "Slide"
+        "Light" : "Ascendant Light"
+        "SlideJump" : "Solar Wind"
+        "plunge" : "Sunsetter"
+        "projectile" : "Soul Cutter"
+        "powerBoost" : "Indignation"
+        "chargeAttack" : "Strikebreak"
+        "extraKick" : "Heliacal Power"
+    ]
+]
 
 @SolidClass = trigger_hazard_zone :
     "Upon collision, player is warped back to last touched safe_zone."
