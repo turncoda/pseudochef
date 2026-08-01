@@ -12,6 +12,12 @@
     angle(integer) : "Direction. Default is 0 (+X)"
 ]
 
+@PointClass = info_respawn_anchor :
+    "Used to tweak respawn location associated with a safe_zone."
+[
+    tag(target_source) : "Tag"
+]
+
 @PointClass base(SaveClass) = misc_save_point :
     "You can target a player_start by putting its 'tag' into this " +
     "entity's 'target' property."
@@ -28,5 +34,8 @@
 @SolidClass = trigger_safe_zone :
     "Functions as a soft invisible checkpoint. Upon collision with a " +
     "hazard_zone, player is warped back to last touched safe_zone. " +
-    "State is not preserved on reload."
-[]
+    "State is not preserved on reload." +
+    "Can target a respawn_anchor if respawn location needs to be tweaked."
+[
+    target(target_destination) : "Target"
+]
