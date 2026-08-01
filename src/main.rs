@@ -162,6 +162,26 @@ fn find_rot_property_mut<'a>(
     result
 }
 
+fn find_vec_property<'a>(
+    export: &'a unreal_asset::Export<PackageIndex>,
+    name: &str,
+) -> Option<&'a unreal_asset::properties::vector_property::VectorProperty> {
+    let mut result = None;
+    let props = &export.get_normal_export().unwrap().properties;
+    for prop in props {
+        if let unreal_asset::properties::Property::StructProperty(struct_prop) = prop
+            && struct_prop.name.get_content(|content| content == name)
+        {
+            for prop in &struct_prop.value {
+                if let unreal_asset::properties::Property::VectorProperty(vec_prop) = prop {
+                    result = Some(vec_prop);
+                }
+            }
+        }
+    }
+    result
+}
+
 fn find_vec_property_mut<'a>(
     export: &'a mut unreal_asset::Export<PackageIndex>,
     name: &str,
@@ -360,7 +380,7 @@ fn add_safe_zone_actor<C: Read + Seek>(
     umap: &mut unreal_asset::Asset<C>,
     origin: DVec3,
     extents: DVec3,
-) {
+) -> PackageIndex {
     let idx = find_export(umap, &[with_name("BP_SafeZone_C")]).unwrap();
     let idx = deep_clone_export(umap, idx);
     add_actor_to_level(umap, idx);
@@ -370,6 +390,8 @@ fn add_safe_zone_actor<C: Read + Seek>(
 
     let root = get_linked_export_mut(umap, idx, "DefaultSceneRoot").unwrap();
     set_location(root, origin);
+
+    idx
 }
 
 fn add_hazard_actor<C: Read + Seek>(
@@ -387,6 +409,19 @@ fn add_hazard_actor<C: Read + Seek>(
 
     let export_root = get_linked_export_mut(umap, idx, "DefaultSceneRoot").unwrap();
     set_location(export_root, origin);
+}
+
+/// Get a reference to the export referenced by the ObjectProperty with name |object_name| on the
+/// export at index |idx|.
+fn get_linked_export<'a, C: Read + Seek>(
+    umap: &'a unreal_asset::Asset<C>,
+    idx: PackageIndex,
+    object_name: &str,
+) -> Option<&'a unreal_asset::Export<PackageIndex>> {
+    let export = umap.get_export(idx)?;
+    let prop = find_obj_property(export, object_name)?;
+    assert!(prop.value.index > 0); // must be export
+    umap.get_export(prop.value)
 }
 
 /// Get a mutable reference to the export referenced by the ObjectProperty with name |object_name|
@@ -449,12 +484,26 @@ fn set_extents(export: &mut unreal_asset::Export<PackageIndex>, location: DVec3)
     prop.value.z.0 = location.z;
 }
 
+fn set_vec_property(export: &mut unreal_asset::Export<PackageIndex>, name: &str, value: DVec3) {
+    let prop =
+        find_vec_property_mut(export, name).expect(&format!("couldn't find property: {}", name));
+    prop.value.x.0 = value.x;
+    prop.value.y.0 = value.y;
+    prop.value.z.0 = value.z;
+}
+
+fn get_vec_property(export: &unreal_asset::Export<PackageIndex>, name: &str) -> DVec3 {
+    let prop =
+        find_vec_property(export, name).expect(&format!("couldn't find property: {}", name));
+    DVec3::new(prop.value.x.0, prop.value.y.0, prop.value.z.0)
+}
+
 fn set_location(export: &mut unreal_asset::Export<PackageIndex>, location: DVec3) {
-    let prop = find_vec_property_mut(export, "RelativeLocation")
-        .expect("couldn't find RelativeLocation property");
-    prop.value.x.0 = location.x;
-    prop.value.y.0 = location.y;
-    prop.value.z.0 = location.z;
+    set_vec_property(export, "RelativeLocation", location);
+}
+
+fn get_location(export: &unreal_asset::Export<PackageIndex>) -> DVec3 {
+    get_vec_property(export, "RelativeLocation")
 }
 
 // Finds the reference StaticMeshActor by its component's name and mesh.
@@ -530,6 +579,8 @@ fn main() {
     let mut num_hazard_brushes = 0;
     let mut player_starts = HashMap::<String, PackageIndex>::new();
     let mut save_points = Vec::<(PackageIndex, String)>::new();
+    let mut safe_zones = Vec::<(PackageIndex, Option<String>)>::new();
+    let mut respawn_anchors = HashMap::<String, DVec3>::new();
     let start = Instant::now();
     for ent in ast.0 {
         let props: HashMap<&str, &str> = ent
@@ -555,7 +606,8 @@ fn main() {
             "trigger_safe_zone" => {
                 for brush in &ent.brushes.0 {
                     let AxisAlignedBoundingBox { origin, extents } = get_aabb(brush);
-                    add_safe_zone_actor(&mut umap, origin, extents);
+                    let idx = add_safe_zone_actor(&mut umap, origin, extents);
+                    safe_zones.push((idx, props.get("target").map(|s| s.to_string())));
                 }
             }
             "trigger_hazard_zone" => {
@@ -566,6 +618,12 @@ fn main() {
                         pak_add_brush(&mut pak, brush, &map_name, &name).unwrap();
                     let idx = add_static_mesh_import(&mut umap, &abs_path);
                     add_hazard_actor(&mut umap, idx, origin);
+                }
+            }
+            "info_respawn_anchor" => {
+                let origin = tb_vec3_to_ue_dvec3(props.get("origin").unwrap_or(&"0 0 0"));
+                if let Some(tag) = props.get("tag") {
+                    respawn_anchors.insert(tag.to_string(), origin);
                 }
             }
             "info_player_start" => {
@@ -598,6 +656,8 @@ fn main() {
     );
 
     println!("Linking actors...");
+
+    // Link save points to player starts
     for (save_idx, save_target) in save_points {
         let save_export = umap.get_export_mut(save_idx).unwrap();
         let start_idx = if let Some(idx) = player_starts.get(&save_target) {
@@ -614,6 +674,23 @@ fn main() {
             PackageIndex::new(0)
         };
         set_obj_property(save_export, "associatedPlayerStart", start_idx);
+    }
+
+    // Link safe zones to respawn anchors
+    for (idx, maybe_target) in safe_zones {
+        let root = get_linked_export(&umap, idx, "RootComponent").unwrap();
+        let safe_zone_location = get_location(&root);
+
+        let offset = if let Some(target) = maybe_target
+            && let Some(anchor_location) = respawn_anchors.get(&target)
+        {
+            anchor_location - safe_zone_location
+        } else {
+            DVec3::default()
+        };
+        println!("safe_zone @{}: respawn_anchor w/ relative offset {}", idx, offset);
+
+        set_vec_property(umap.get_export_mut(idx).unwrap(), "offset", offset);
     }
 
     // rename level export (for swag only; seemingly inconsequential)
