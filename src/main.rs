@@ -18,6 +18,8 @@ use unreal_asset_ext::{deep_clone_export, deep_delete_export};
 mod upgrade_data;
 use upgrade_data::{get_upgrade_data, set_upgrade_data};
 
+mod tb;
+
 // For debugging purposes; may not be called
 #[allow(dead_code)]
 mod obj_export;
@@ -221,6 +223,22 @@ fn find_obj_property<'a>(
     result
 }
 
+fn find_bool_property_mut<'a>(
+    export: &'a mut unreal_asset::Export<PackageIndex>,
+    key: &str,
+) -> Option<&'a mut unreal_asset::properties::int_property::BoolProperty> {
+    let mut result = None;
+    let props = &mut export.get_normal_export_mut().unwrap().properties;
+    for prop in props {
+        if let unreal_asset::properties::Property::BoolProperty(bool_prop) = prop
+            && bool_prop.name.get_content(|content| content == key)
+        {
+            result = Some(bool_prop);
+        }
+    }
+    result
+}
+
 fn find_text_property_mut<'a>(
     export: &'a mut unreal_asset::Export<PackageIndex>,
     key: &str,
@@ -378,6 +396,7 @@ fn add_upgrade<C: Read + Seek>(
     umap: &mut unreal_asset::Asset<C>,
     location: DVec3,
     upgrade_name: &str,
+    quick_pickup: bool,
 ) -> PackageIndex {
     let idx = find_export(umap, &[with_name("BP_UpgradeBase_C")]).unwrap();
     let idx = deep_clone_export(umap, idx);
@@ -385,6 +404,7 @@ fn add_upgrade<C: Read + Seek>(
 
     let export = umap.get_export_mut(idx).unwrap();
     set_text_property(export, "rowName", upgrade_name);
+    set_bool_property(export, "debugQuickPickup", quick_pickup);
 
     {
         let mut upgrade_data = get_upgrade_data(upgrade_name);
@@ -478,6 +498,11 @@ fn get_linked_export_mut<'a, C: Read + Seek>(
     let prop = find_obj_property(export, object_name)?;
     assert!(prop.value.index > 0); // must be export
     umap.get_export_mut(prop.value)
+}
+
+fn set_bool_property(export: &mut unreal_asset::Export<PackageIndex>, key: &str, value: bool) {
+    let prop = find_bool_property_mut(export, key).unwrap();
+    prop.value = value;
 }
 
 fn set_text_property(export: &mut unreal_asset::Export<PackageIndex>, key: &str, value: &str) {
@@ -684,7 +709,14 @@ fn main() {
             "item_upgrade" => {
                 let origin = tb_vec3_to_ue_dvec3(props.get("origin").unwrap_or(&"0 0 0"));
                 let upgrade_name = props.get("upgrade").unwrap_or(&"attack");
-                add_upgrade(&mut umap, origin, upgrade_name);
+                let quick_pickup = {
+                    // TODO this is temporary until I migrate all the other tb prop retrieval to
+                    // generic functions
+                    let opt = props.get("quick_pickup");
+                    let s = opt.unwrap_or(&"");
+                    tb::parse_bool(Some(&s.to_string()))
+                };
+                add_upgrade(&mut umap, origin, upgrade_name, quick_pickup);
             }
             "misc_jump_bubble" => {
                 let origin = tb_vec3_to_ue_dvec3(props.get("origin").unwrap_or(&"0 0 0"));
