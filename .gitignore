@@ -1,11 +1,13 @@
+# Rust build artifacts
 /target
 /pseudocooker/target
 
+# pseudochef outputs
 /*.umap
 /*.uexp
 /*.pak
 /*.exe
-
+/*.zip
 /static/*.exe
 /static/*.zip
 
