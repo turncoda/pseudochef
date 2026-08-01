@@ -15,6 +15,9 @@ use brush_to_mesh::{AxisAlignedBoundingBox, convert_to_mesh, get_aabb, tb_space_
 mod unreal_asset_ext;
 use unreal_asset_ext::{deep_clone_export, deep_delete_export};
 
+mod upgrade_data;
+use upgrade_data::{UpgradeData, get_upgrade_data};
+
 // For debugging purposes; may not be called
 #[allow(dead_code)]
 mod obj_export;
@@ -200,25 +203,6 @@ fn find_vec_property_mut<'a>(
         }
     }
     result
-}
-
-#[derive(Default)]
-struct UpgradeData {
-    id: i32,
-    display_name: String,
-    model: PackageIndex,
-    powerup_tier: i32,
-    instructions: String,
-    description: String,
-    extended_description: String,
-    display_image: PackageIndex,
-}
-
-fn get_default_upgrade_data(key: &str) -> Option<UpgradeData> {
-    match key {
-        "attack" => Some(UpgradeData::default()),
-        _ => None
-    }
 }
 
 fn set_upgrade_data<'a>(
@@ -409,7 +393,7 @@ fn add_upgrade<C: Read + Seek>(
     let export = umap.get_export_mut(idx).unwrap();
     set_text_property(export, "rowName", upgrade_name);
 
-    let mut upgrade_data = get_default_upgrade_data(upgrade_name).unwrap_or(UpgradeData::default());
+    let mut upgrade_data = get_upgrade_data(upgrade_name);
     // TODO override here
     set_upgrade_data(export, upgrade_data);
 
