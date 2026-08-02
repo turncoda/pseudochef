@@ -5,12 +5,13 @@ on:
     tags:
       - "v*.*.*"
 
-env:
-  CARGO_TERM_COLOR: always
-  CARGO_INCREMENTAL: 0
+#env:
+#  CARGO_TERM_COLOR: always
 
 jobs:
-  build:
+  make-release:
+    permissions:
+      contents: write  # allows action to create releases
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
