@@ -699,10 +699,7 @@ fn main() {
                 }
             }
             "info_player_start" => {
-                let mut origin = tb_vec3_to_ue_dvec3(props.get("origin").unwrap_or(&"0 0 0"));
-                // TB info_player_start has origin at the bottom of the bounding box,
-                // whereas UE PlayerStart has origin in the center of the capsule.
-                origin.z += 100.0;
+                let origin = tb_vec3_to_ue_dvec3(props.get("origin").unwrap_or(&"0 0 0"));
                 let angle: i16 = props.get("angle").map(|s| s.parse().unwrap()).unwrap_or(0);
                 let angle = -angle; // TB (right-handed) to UE (left-handed)
                 let tag = props.get("tag").unwrap_or(&"gameStart");
