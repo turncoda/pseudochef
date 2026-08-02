@@ -1,0 +1,27 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Build
+        run: cargo build --verbose --release
+      - name: Test
+        run: cargo test --verbose
+      - name: Package
+        run: scripts/posix/make_release_tarball.sh
+      - name: Release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: pseudochef-*-*-*.tar.gz
