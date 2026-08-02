@@ -516,7 +516,7 @@ dependencies = [
 
 [[package]]
 name = "pseudochef"
-version = "0.5.4"
+version = "0.5.5"
 dependencies = [
  "glam",
  "humansize",
