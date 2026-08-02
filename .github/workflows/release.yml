@@ -12,7 +12,7 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [ ubuntu-latest, windows-latest ]
+        os: [ ubuntu-latest, windows-latest, macos-latest ]
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write  # Allow action to create releases.
@@ -34,10 +34,10 @@ jobs:
           files: pseudochef-*-*-*.zip
 
       - name: Package (${{ runner.os }})
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' || runner.os == 'macOS'
         run: scripts/posix/make_release_tarball.sh
       - name: Release (${{ runner.os }})
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' || runner.os == 'macOS'
         uses: softprops/action-gh-release@v3
         with:
           files: pseudochef-*-*-*.tar.gz
