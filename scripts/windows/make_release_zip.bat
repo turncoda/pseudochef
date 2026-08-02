@@ -1,15 +1,25 @@
 @echo off
 
-cargo build --release
-echo.
+set "ARCH=generic"
+if /i "%PROCESSOR_ARCHITECTURE%"=="AMD64" (
+    set "ARCH=x86_64"
+)
 
-set "ROOT=%~dp0\..\.."
-for %%p in ("%ROOT%") do set "ROOT=%%~fp"
-echo ### Root directory set to: %ROOT%
-
+cd %~dp0
+cd ..
+cd ..
 
 for /f "tokens=2 delims=#" %%v in ('cargo pkgid') do set "PKG_VER=%%v"
+set "ZIP_NAME=pseudochef-win64-%ARCH%-%PKG_VER%.zip"
+
+cargo build --release
+echo.
 echo ### Version is: %PKG_VER%
 echo.
 
-7z a "%ROOT%\pseudochef-win64-%PKG_VER%.zip" "%ROOT%\dist\*" "%ROOT%\target\release\pseudochef.exe"
+
+copy "target\release\pseudochef.exe" "dist\"
+cd "dist\"
+7z u "..\%ZIP_NAME%" *
+cd ..
+7z l "%ZIP_NAME%"
