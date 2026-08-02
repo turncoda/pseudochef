@@ -1,18 +1,22 @@
-name: Release
+name: Generate release for tag
 
 on:
   push:
     tags:
       - "v*.*.*"
 
-#env:
-#  CARGO_TERM_COLOR: always
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
-  make-release:
+  build:
+    strategy:
+      matrix:
+        os: [ ubuntu-latest, windows-latest ]
+    name: Build (${{ runner.os }})
+    runs-on: ${{ matrix.os }}
     permissions:
-      contents: write  # allows action to create releases
-    runs-on: ubuntu-latest
+      contents: write  # Allow action to create releases.
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -20,9 +24,21 @@ jobs:
         run: cargo build --release
       - name: Test
         run: cargo test
-      - name: Package
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        run: scripts/windows/make_release_zip.bat
+      - name: Release (Windows)
+        if: runner.os == 'Windows'
+        uses: softprops/action-gh-release@v3
+        with:
+          files: pseudochef-*-*-*.zip
+
+      - name: Package (${{ runner.os }})
+        if: runner.os == 'Linux'
         run: scripts/posix/make_release_tarball.sh
-      - name: Release
+      - name: Release (${{ runner.os }})
+        if: runner.os == 'Linux'
         uses: softprops/action-gh-release@v3
         with:
           files: pseudochef-*-*-*.tar.gz
