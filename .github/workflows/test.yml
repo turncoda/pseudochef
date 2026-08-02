@@ -1,0 +1,17 @@
+name: Test
+
+on: push
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Build
+        run: cargo build --release
+      - name: Test
+        run: cargo test
