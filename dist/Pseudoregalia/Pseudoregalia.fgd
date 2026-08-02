@@ -2,7 +2,7 @@
 
 @baseclass size(-12 -12 0, 12 12 48) color(0 255 0) = PlayerClass []
 @baseclass size(-12 -12 0, 12 12 48) color(0 255 255) = SaveClass []
-@baseclass size(-16 -16 0, 16 16 32) color(255 255 255) = ItemClass []
+@baseclass size(-16 -16 9, 16 16 41) color(255 255 255) = ItemClass []
 @baseclass size(-8 -8 0, 8 8 16) = AnchorClass []
 @baseclass size(-12 -12 -12, 12 12 12) color(255 127 255) = BubbleClass []
 
