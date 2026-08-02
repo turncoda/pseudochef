@@ -8,8 +8,8 @@
 /*.pak
 /*.exe
 /*.zip
-/static/*.exe
-/static/*.zip
+/dist/*.exe
+/dist/*.zip
 
 # TrenchBroom
 /autosave

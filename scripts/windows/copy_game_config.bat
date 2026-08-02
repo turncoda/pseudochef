@@ -21,7 +21,7 @@ exit /b 1
 :valid
 
 set "src=%appdata%\TrenchBroom\games\Pseudoregalia"
-set "dst=%~dp0\..\..\static\Pseudoregalia"
+set "dst=%~dp0\..\..\dist\Pseudoregalia"
 
 REM Normalize paths.
 for %%p in ("%src%") do set "src=%%~fp"

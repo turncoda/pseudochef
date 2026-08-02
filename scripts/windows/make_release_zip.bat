@@ -12,4 +12,4 @@ for /f "tokens=2 delims=#" %%v in ('cargo pkgid') do set "PKG_VER=%%v"
 echo ### Version is: %PKG_VER%
 echo.
 
-7z a "%ROOT%\pseudochef-win64-%PKG_VER%.zip" "%ROOT%\static\*" "%ROOT%\target\release\pseudochef.exe"
+7z a "%ROOT%\pseudochef-win64-%PKG_VER%.zip" "%ROOT%\dist\*" "%ROOT%\target\release\pseudochef.exe"
