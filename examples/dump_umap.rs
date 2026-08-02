@@ -3,13 +3,13 @@ use std::io::Cursor;
 use unreal_asset::exports::ExportBaseTrait;
 use unreal_asset::types::PackageIndex;
 
-const MISE_UMAP: &[u8] = include_bytes!("../src/mise/mise.umap");
-const MISE_UEXP: &[u8] = include_bytes!("../src/mise/mise.uexp");
+const UMAP: &[u8] = include_bytes!("../src/base/ModPack_Base.umap");
+const UEXP: &[u8] = include_bytes!("../src/base/ModPack_Base.uexp");
 
 fn main() {
     let umap = unreal_asset::Asset::new(
-        Cursor::new(MISE_UMAP),
-        Some(Cursor::new(MISE_UEXP)),
+        Cursor::new(UMAP),
+        Some(Cursor::new(UEXP)),
         unreal_asset::engine_version::EngineVersion::VER_UE5_1,
         None,
     )
