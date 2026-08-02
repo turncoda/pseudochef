@@ -851,8 +851,11 @@ fn main() {
     umap.write_data(&mut final_umap, Some(&mut final_uexp))
         .expect("failed to serialize umap");
 
-    std::fs::write("dbg.umap", final_umap.get_ref()).unwrap();
-    std::fs::write("dbg.uexp", final_uexp.get_ref()).unwrap();
+    #[cfg(debug_assertions)]
+    {
+        std::fs::write("dbg.umap", final_umap.get_ref()).unwrap();
+        std::fs::write("dbg.uexp", final_uexp.get_ref()).unwrap();
+    }
 
     let umap_path = format!("Mods/Maps/{}.umap", map_name);
     let uexp_path = format!("Mods/Maps/{}.uexp", map_name);
