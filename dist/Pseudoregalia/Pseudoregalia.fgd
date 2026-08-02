@@ -1,7 +1,7 @@
 @SolidClass = worldspawn : "World entity" []
 
-@baseclass size(-16 -16 -24, 16 16 32) color(0 255 0) = PlayerClass []
-@baseclass size(-16 -16 -24, 16 16 32) color(0 255 255) = SaveClass []
+@baseclass size(-12 -12 -16, 12 12 32) color(0 255 0) = PlayerClass []
+@baseclass size(-12 -12 0, 12 12 48) color(0 255 255) = SaveClass []
 
 @PointClass base(PlayerClass) = info_player_start :
     "If you specify 'tag', you can target it from a save_point. " +
