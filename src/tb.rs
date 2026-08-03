@@ -14,30 +14,40 @@ fn tb_vec3_to_ue_dvec3(s: &str) -> DVec3 {
     tb_space_to_ue_space(dv)
 }
 
-pub fn parse_bool(opt: Option<&String>) -> bool {
-    let s: &str = opt.map(|s| s.as_ref()).unwrap_or("");
-    match s {
+pub fn unwrap_bool<S: AsRef<str>>(opt: Option<S>) -> bool {
+    let Some(s) = opt else {
+        return false;
+    };
+    match s.as_ref() {
         "1" => true,
         "0" => false,
         _ => false,
     }
 }
 
-pub fn parse_vec3(opt: Option<&String>) -> DVec3 {
-    let s: &str = opt.map(|s| s.as_ref()).unwrap_or("0 0 0");
-    tb_vec3_to_ue_dvec3(s)
+pub fn unwrap_vec3<S: AsRef<str>>(opt: Option<S>) -> DVec3 {
+    let Some(s) = opt else {
+        return DVec3::default();
+    };
+    tb_vec3_to_ue_dvec3(s.as_ref())
 }
 
-pub fn parse_angle(opt: Option<&String>) -> i16 {
-    let s: &str = opt.map(|s| s.as_ref()).unwrap_or("");
-    let angle = match s {
-        "" => 0,
-        _ => s.parse().unwrap(),
+pub fn unwrap_i16<S: AsRef<str>>(opt: Option<S>) -> i16 {
+    let Some(s) = opt else {
+        return 0;
+    };
+    let s = s.as_ref();
+    if s.len() == 0 {
+        return 0;
+    }
+    let opt: Result<i16, _> = s.parse();
+    let Ok(angle) = opt else {
+        panic!("failed to parse 16-bit signed integer angle from: '{}'", s);
     };
     let angle = -angle; // TB (right-handed) to UE (left-handed)
     angle
 }
 
-pub fn get_string_with_default<'a>(opt: Option<&'a String>, default: &'a str) -> &'a str {
+pub fn unwrap_string_or<'a, S: AsRef<str>>(opt: Option<&'a S>, default: &'a str) -> &'a str {
     opt.map(|s| s.as_ref()).unwrap_or(default)
 }

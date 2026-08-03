@@ -760,36 +760,36 @@ fn main() {
                 }
             }
             "info_respawn_anchor" => {
-                let origin = tb::parse_vec3(props.get("origin"));
+                let origin = tb::unwrap_vec3(props.get("origin"));
                 if let Some(tag) = props.get("tag") {
                     respawn_anchors.insert(tag.to_string(), origin);
                 }
             }
             "info_player_start" => {
-                let origin = tb::parse_vec3(props.get("origin"));
-                let angle = tb::parse_angle(props.get("angle"));
-                let tag = tb::get_string_with_default(props.get("tag"), "gameStart");
+                let origin = tb::unwrap_vec3(props.get("origin"));
+                let angle = tb::unwrap_i16(props.get("angle"));
+                let tag = tb::unwrap_string_or(props.get("tag"), "gameStart");
                 let idx = add_player_start(&mut umap, origin, angle, tag);
                 player_starts.insert(tag.to_string(), idx);
             }
             "item_upgrade" => {
-                let origin = tb::parse_vec3(props.get("origin"));
-                let upgrade_name = tb::get_string_with_default(props.get("upgrade"), "attack");
-                let quick_pickup = tb::parse_bool(props.get("quick_pickup"));
+                let origin = tb::unwrap_vec3(props.get("origin"));
+                let upgrade_name = tb::unwrap_string_or(props.get("upgrade"), "attack");
+                let quick_pickup = tb::unwrap_bool(props.get("quick_pickup"));
                 add_upgrade(&mut umap, origin, upgrade_name, quick_pickup);
             }
             "misc_jump_bubble" => {
-                let origin = tb::parse_vec3(props.get("origin"));
+                let origin = tb::unwrap_vec3(props.get("origin"));
                 add_jump_bubble(&mut umap, origin);
             }
             "misc_save_point" => {
-                let origin = tb::parse_vec3(props.get("origin"));
-                let target = tb::get_string_with_default(props.get("target"), "gameStart");
+                let origin = tb::unwrap_vec3(props.get("origin"));
+                let target = tb::unwrap_string_or(props.get("target"), "gameStart");
                 let idx = add_save_point(&mut umap, origin);
                 save_points.push((idx, target.to_string()));
             }
             "prop_gate" => {
-                let origin = tb::parse_vec3(props.get("origin"));
+                let origin = tb::unwrap_vec3(props.get("origin"));
                 // TODO handle angle
                 add_gate(&mut umap, origin, 0);
             }
