@@ -790,8 +790,8 @@ fn main() {
             }
             "prop_gate" => {
                 let origin = tb::unwrap_vec3(props.get("origin"));
-                // TODO handle angle
-                add_gate(&mut umap, origin, 0);
+                let angle = tb::unwrap_i16(props.get("angle"));
+                add_gate(&mut umap, origin, angle);
             }
             _ => {}
         };
