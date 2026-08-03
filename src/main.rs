@@ -24,101 +24,71 @@ mod tb;
 #[allow(dead_code)]
 mod obj_export;
 
-const MISE_FILES: &[(&str, &[u8])] = &[
+const MISE_FILES: &[(&str, &[u8], &[u8], &[u8])] = &[
     (
-        "SM_StarterGate.uasset",
+        "SM_StarterGate",
         include_bytes!("base/ModPack_Base/SM_StarterGate.uasset"),
-    ),
-    (
-        "SM_StarterGate.uexp",
         include_bytes!("base/ModPack_Base/SM_StarterGate.uexp"),
-    ),
-    (
-        "SM_StarterGate.ubulk",
         include_bytes!("base/ModPack_Base/SM_StarterGate.ubulk"),
     ),
     (
-        "MI_ExampleMat.uasset",
+        "MI_ExampleMat",
         include_bytes!("base/ModPack_Base/MI_ExampleMat.uasset"),
-    ),
-    (
-        "MI_ExampleMat.uexp",
         include_bytes!("base/ModPack_Base/MI_ExampleMat.uexp"),
+        &[],
     ),
     (
-        "MI_StarterGate.uasset",
+        "MI_StarterGate",
         include_bytes!("base/ModPack_Base/MI_StarterGate.uasset"),
-    ),
-    (
-        "MI_StarterGate.uexp",
         include_bytes!("base/ModPack_Base/MI_StarterGate.uexp"),
+        &[],
     ),
     (
-        "T_StarterGate.uasset",
+        "T_StarterGate",
         include_bytes!("base/ModPack_Base/T_StarterGate.uasset"),
-    ),
-    (
-        "T_StarterGate.uexp",
         include_bytes!("base/ModPack_Base/T_StarterGate.uexp"),
+        &[],
     ),
     (
-        "T_Debug.uasset",
+        "T_Debug",
         include_bytes!("base/ModPack_Base/T_Debug.uasset"),
-    ),
-    (
-        "T_Debug.uexp",
         include_bytes!("base/ModPack_Base/T_Debug.uexp"),
+        &[],
     ),
     (
-        "BP_Hazard.uasset",
+        "BP_Hazard",
         include_bytes!("base/ModPack_Base/BP_Hazard.uasset"),
-    ),
-    (
-        "BP_Hazard.uexp",
         include_bytes!("base/ModPack_Base/BP_Hazard.uexp"),
+        &[],
     ),
     (
-        "BP_SafeZone.uasset",
+        "BP_SafeZone",
         include_bytes!("base/ModPack_Base/BP_SafeZone.uasset"),
-    ),
-    (
-        "BP_SafeZone.uexp",
         include_bytes!("base/ModPack_Base/BP_SafeZone.uexp"),
+        &[],
     ),
     (
-        "M_SafeZone_Inst.uasset",
+        "M_SafeZone_Inst",
         include_bytes!("base/ModPack_Base/M_SafeZone_Inst.uasset"),
-    ),
-    (
-        "M_SafeZone_Inst.uexp",
         include_bytes!("base/ModPack_Base/M_SafeZone_Inst.uexp"),
+        &[],
     ),
     (
-        "M_SafeZone.uasset",
+        "M_SafeZone",
         include_bytes!("base/ModPack_Base/M_SafeZone.uasset"),
-    ),
-    (
-        "M_SafeZone.uexp",
         include_bytes!("base/ModPack_Base/M_SafeZone.uexp"),
+        &[],
     ),
     (
-        "M_HazMat.uasset",
+        "M_HazMat",
         include_bytes!("base/ModPack_Base/M_HazMat.uasset"),
-    ),
-    (
-        "M_HazMat.uexp",
         include_bytes!("base/ModPack_Base/M_HazMat.uexp"),
+        &[],
     ),
     (
-        "SM_ExampleBox.uasset",
+        "SM_ExampleBox",
         include_bytes!("base/ModPack_Base/SM_ExampleBox.uasset"),
-    ),
-    (
-        "SM_ExampleBox.uexp",
         include_bytes!("base/ModPack_Base/SM_ExampleBox.uexp"),
-    ),
-    (
-        "SM_ExampleBox.ubulk",
         include_bytes!("base/ModPack_Base/SM_ExampleBox.ubulk"),
     ),
 ];
@@ -663,6 +633,40 @@ fn tb_vec3_to_ue_dvec3(s: &str) -> DVec3 {
     tb_space_to_ue_space(dv)
 }
 
+fn reroute_imports<C: Read + Seek>(umap: &mut unreal_asset::Asset<C>, src: &str, dst: &str) {
+    // Collect indices of all Package imports.
+    let mut package_imports_to_rewrite = vec![];
+    for (i, import) in umap.imports.iter_mut().enumerate() {
+        if import
+            .class_name
+            .get_content(|content| content != "Package")
+        {
+            continue;
+        }
+        if import
+            .object_name
+            .get_content(|content| content.contains(src))
+        {
+            package_imports_to_rewrite.push((i, import.object_name.get_owned_content()));
+        }
+    }
+
+    // Rewrite imports to point to bundled assets, part 2:
+    // Replace the mod pack name with the level name.
+    for (i, orig_path) in package_imports_to_rewrite {
+        let patched_path = orig_path.replacen(src, dst, 1);
+        let fname = umap.add_fname(&patched_path);
+        let import = &mut umap.imports[i];
+        import.object_name = fname;
+        println!(
+            "Rewrote import {}: '{}' -> '{}'",
+            -((i + 1) as i32),
+            orig_path,
+            patched_path
+        );
+    }
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
@@ -870,38 +874,8 @@ fn main() {
     // references, mod pack version mismatch, etc. In other words, we're opting for static linking,
     // not dynamic linking. Of course, this unfortunately means larger map pak sizes!
 
-    // Rewrite imports to point to bundled assets, part 1:
-    // Collect indices of all Package imports.
-    let mut package_imports_to_rewrite = vec![];
-    for (i, import) in umap.imports.iter_mut().enumerate() {
-        if import
-            .class_name
-            .get_content(|content| content != "Package")
-        {
-            continue;
-        }
-        if import
-            .object_name
-            .get_content(|content| content.contains("ModPack_Base"))
-        {
-            package_imports_to_rewrite.push((i, import.object_name.get_owned_content()));
-        }
-    }
-
-    // Rewrite imports to point to bundled assets, part 2:
-    // Replace the mod pack name with the level name.
-    for (i, orig_path) in package_imports_to_rewrite {
-        let patched_path = orig_path.replacen("ModPack_Base", &map_name, 1);
-        let fname = umap.add_fname(&patched_path);
-        let import = &mut umap.imports[i];
-        import.object_name = fname;
-        println!(
-            "Rewrote import {}: '{}' -> '{}'",
-            -((i + 1) as i32),
-            orig_path,
-            patched_path
-        );
-    }
+    // Reroute imports to point to bundled assets.
+    reroute_imports(&mut umap, "ModPack_Base", &map_name);
 
     let mut final_umap = std::io::Cursor::new(vec![]);
     let mut final_uexp = std::io::Cursor::new(vec![]);
@@ -921,10 +895,45 @@ fn main() {
     pak.write_file(&uexp_path, true, final_uexp.get_ref())
         .expect("failed to write uexp to pak");
 
-    for (name, bytes) in MISE_FILES {
-        let path = format!("Mods/Maps/{}/{}", map_name, name);
-        pak.write_file(&path, true, bytes)
-            .unwrap_or_else(|_| panic!("failed to write {} to pak", name));
+    for (name, uasset_bytes, uexp_bytes, ubulk_bytes) in MISE_FILES {
+        println!("Rerouting imports in: {}", name);
+        let mut uasset = unreal_asset::Asset::new(
+            std::io::Cursor::new(uasset_bytes),
+            Some(std::io::Cursor::new(uexp_bytes)),
+            unreal_asset::engine_version::EngineVersion::VER_UE5_1,
+            None,
+        )
+        .expect("failed to parse uasset");
+
+        reroute_imports(&mut uasset, "ModPack_Base", &map_name);
+
+        let mut uasset_bytes = vec![];
+        let mut uexp_bytes = vec![];
+        uasset
+            .write_data(
+                &mut std::io::Cursor::new(&mut uasset_bytes),
+                Some(&mut std::io::Cursor::new(&mut uexp_bytes)),
+            )
+            .unwrap();
+
+        #[cfg(debug_assertions)]
+        {
+            std::fs::create_dir_all("dbg").unwrap();
+            std::fs::write(&format!("dbg/{}.uasset", name), &uasset_bytes).unwrap();
+            std::fs::write(&format!("dbg/{}.uexp", name), &uexp_bytes).unwrap();
+        }
+
+        let uasset_path = format!("Mods/Maps/{}/{}.uasset", map_name, name);
+        let uexp_path = format!("Mods/Maps/{}/{}.uexp", map_name, name);
+        pak.write_file(&uasset_path, true, uasset_bytes)
+            .unwrap_or_else(|_| panic!("failed to write: {}", uasset_path));
+        pak.write_file(&uexp_path, true, uexp_bytes)
+            .unwrap_or_else(|_| panic!("failed to write: {}", uexp_path));
+        if ubulk_bytes.len() > 0 {
+            let ubulk_path = format!("Mods/Maps/{}/{}.ubulk", map_name, name);
+            pak.write_file(&ubulk_path, true, ubulk_bytes)
+                .unwrap_or_else(|_| panic!("failed to write: {}", ubulk_path));
+        }
     }
 
     let mut writer = pak.write_index().expect("failed to write pak file");

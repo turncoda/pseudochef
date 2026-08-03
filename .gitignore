@@ -3,8 +3,9 @@
 /pseudocooker/target
 
 # pseudochef outputs
-/*.umap
-/*.uexp
+/dbg
+/dbg.umap
+/dbg.uexp
 /*.pak
 /*.exe
 /*.zip
