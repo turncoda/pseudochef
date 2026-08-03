@@ -26,6 +26,50 @@ mod obj_export;
 
 const MISE_FILES: &[(&str, &[u8])] = &[
     (
+        "SM_StarterGate.uasset",
+        include_bytes!("base/ModPack_Base/SM_StarterGate.uasset"),
+    ),
+    (
+        "SM_StarterGate.uexp",
+        include_bytes!("base/ModPack_Base/SM_StarterGate.uexp"),
+    ),
+    (
+        "SM_StarterGate.ubulk",
+        include_bytes!("base/ModPack_Base/SM_StarterGate.ubulk"),
+    ),
+    (
+        "MI_ExampleMat.uasset",
+        include_bytes!("base/ModPack_Base/MI_ExampleMat.uasset"),
+    ),
+    (
+        "MI_ExampleMat.uexp",
+        include_bytes!("base/ModPack_Base/MI_ExampleMat.uexp"),
+    ),
+    (
+        "MI_StarterGate.uasset",
+        include_bytes!("base/ModPack_Base/MI_StarterGate.uasset"),
+    ),
+    (
+        "MI_StarterGate.uexp",
+        include_bytes!("base/ModPack_Base/MI_StarterGate.uexp"),
+    ),
+    (
+        "T_StarterGate.uasset",
+        include_bytes!("base/ModPack_Base/T_StarterGate.uasset"),
+    ),
+    (
+        "T_StarterGate.uexp",
+        include_bytes!("base/ModPack_Base/T_StarterGate.uexp"),
+    ),
+    (
+        "T_Debug.uasset",
+        include_bytes!("base/ModPack_Base/T_Debug.uasset"),
+    ),
+    (
+        "T_Debug.uexp",
+        include_bytes!("base/ModPack_Base/T_Debug.uexp"),
+    ),
+    (
         "BP_Hazard.uasset",
         include_bytes!("base/ModPack_Base/BP_Hazard.uasset"),
     ),
@@ -797,8 +841,23 @@ fn main() {
             find_export(&umap, &[with_name("BP_SavePoint_C")]).unwrap(),
             find_export(&umap, &[with_name("BP_JumpBubble_C")]).unwrap(),
             find_export(&umap, &[with_name("BP_UpgradeBase_C")]).unwrap(),
+            find_export(&umap, &[with_name("BP_NPC_C")]).unwrap(),
+            find_export(&umap, &[with_name("BP_HitSwitch_C")]).unwrap(),
+            find_export(&umap, &[with_name("BP_SwA_StaticMesh_C")]).unwrap(),
+            find_export(&umap, &[with_name("BP_ClimbPole_C")]).unwrap(),
+            find_export(&umap, &[with_name("BP_BounceHitter_C")]).unwrap(),
+            find_export(&umap, &[with_name("BP_TrialGate_C")]).unwrap(),
+            find_export(&umap, &[with_name("BP_TimeTrial_C")]).unwrap(),
             find_export(&umap, &[with_name("PlayerStart")]).unwrap(),
             find_original_static_mesh_actor(&umap),
+            find_export(
+                &umap,
+                &[
+                    with_name("StaticMeshComponent0"),
+                    with_import("StaticMesh", "SM_StarterGate"),
+                ],
+            )
+            .unwrap(),
         ];
 
         for idx in idxs {
@@ -811,8 +870,8 @@ fn main() {
     // references, mod pack version mismatch, etc. In other words, we're opting for static linking,
     // not dynamic linking. Of course, this unfortunately means larger map pak sizes!
 
-    // Rewrite mod pack Package imports to reference bundled assets, part 1
-    // Collect indexes of
+    // Rewrite imports to point to bundled assets, part 1:
+    // Collect indices of all Package imports.
     let mut package_imports_to_rewrite = vec![];
     for (i, import) in umap.imports.iter_mut().enumerate() {
         if import
@@ -829,7 +888,8 @@ fn main() {
         }
     }
 
-    // Rewrite mod pack Package imports to reference bundled assets, part 2
+    // Rewrite imports to point to bundled assets, part 2:
+    // Replace the mod pack name with the level name.
     for (i, orig_path) in package_imports_to_rewrite {
         let patched_path = orig_path.replacen("ModPack_Base", &map_name, 1);
         let fname = umap.add_fname(&patched_path);
