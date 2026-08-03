@@ -123,11 +123,13 @@ Used to tweak respawn location associated with a safe_zone.
 //     * (Other meshes in the game seem to use global coordinates as UVs.)
 //   * Mesh and texture originally created by turncoda for map_starter.
 //   * Origin: Center-bottom
-//   * Dimensions: 400, 20, 600
+//   * Dimensions: 20, 400, 600
 // ============================================================================
-@PointClass size(-50 -4 0, 50 4 150) = prop_gate : "
+@PointClass size(-50 -50 0, 50 50 150) = prop_gate : "
 
 A fixed-size gate. Not from the base game.
+
+Can be rotated using the angle property.
 
 Pairs well with a hit_switch.
 
