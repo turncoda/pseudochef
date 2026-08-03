@@ -397,6 +397,16 @@ fn add_save_point<C: Read + Seek>(
     idx
 }
 
+fn add_gate<C: Read + Seek>(umap: &mut unreal_asset::Asset<C>, location: DVec3, yaw: i16) {
+    let idx = find_gate_static_mesh_actor(umap);
+    let idx = deep_clone_export(umap, idx);
+    add_actor_to_level(umap, idx);
+
+    let root = get_linked_export_mut(umap, idx, "RootComponent").unwrap();
+    set_location(root, location);
+    set_yaw(root, yaw);
+}
+
 fn add_jump_bubble<C: Read + Seek>(umap: &mut unreal_asset::Asset<C>, location: DVec3) {
     let idx = find_export(umap, &[with_name("BP_JumpBubble_C")]).unwrap();
     let idx = deep_clone_export(umap, idx);
@@ -592,6 +602,21 @@ fn get_location(export: &unreal_asset::Export<PackageIndex>) -> DVec3 {
     get_vec_property(export, "RelativeLocation")
 }
 
+fn find_gate_static_mesh_actor<C: Read + Seek>(umap: &unreal_asset::Asset<C>) -> PackageIndex {
+    let idx = find_export(
+        umap,
+        &[
+            with_name("StaticMeshComponent0"),
+            with_import("StaticMesh", "SM_StarterGate"),
+        ],
+    )
+    .unwrap();
+    let export = umap.get_export(idx).unwrap();
+
+    // Return the parent (a StaticMeshActor).
+    export.get_base_export().outer_index
+}
+
 // Finds the reference StaticMeshActor by its component's name and mesh.
 // Clones made by `add_static_mesh_actor` never match: `deep_clone_export`
 // renames the cloned component and `set_obj_property` repoints its
@@ -776,6 +801,11 @@ fn main() {
                 let idx = add_save_point(&mut umap, origin);
                 save_points.push((idx, target));
             }
+            "prop_gate" => {
+                let origin = tb_vec3_to_ue_dvec3(props.get("origin").unwrap_or(&"0 0 0"));
+                // TODO handle angle
+                add_gate(&mut umap, origin, 0);
+            }
             _ => {}
         };
     }
@@ -854,14 +884,7 @@ fn main() {
             find_export(&umap, &[with_name("BP_TimeTrial_C")]).unwrap(),
             find_export(&umap, &[with_name("PlayerStart")]).unwrap(),
             find_original_static_mesh_actor(&umap),
-            find_export(
-                &umap,
-                &[
-                    with_name("StaticMeshComponent0"),
-                    with_import("StaticMesh", "SM_StarterGate"),
-                ],
-            )
-            .unwrap(),
+            find_gate_static_mesh_actor(&umap),
         ];
 
         for idx in idxs {

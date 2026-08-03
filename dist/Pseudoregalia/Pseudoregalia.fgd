@@ -117,3 +117,21 @@ Used to tweak respawn location associated with a safe_zone.
     tag(target_source) : "Tag"
 ]
 
+
+// === SM_StarterGate (custom) ================================================
+//   * Custom static mesh with actual UVs.
+//     * (Other meshes in the game seem to use global coordinates as UVs.)
+//   * Mesh and texture originally created by turncoda for map_starter.
+//   * Origin: Center-bottom
+//   * Dimensions: 400, 20, 600
+// ============================================================================
+@PointClass size(-50 -4 0, 50 4 150) = prop_gate : "
+
+A fixed-size gate. Not from the base game.
+
+Pairs well with a hit_switch.
+
+"
+[
+    angle(integer) : "Angle"
+]
