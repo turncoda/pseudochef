@@ -58,11 +58,12 @@ pub fn set_upgrade_data<'a>(
         }
         if let unreal_asset::properties::Property::ObjectProperty(obj_prop) = prop {
             let key: String = obj_prop.name.get_owned_content();
-            let value = match key.as_ref() {
+            let _value = match key.as_ref() {
                 "DisplayImage_30_ECF7EFC64CBA612E75C67B946B8DD873" => &upgrade_data.display_image,
                 _ => panic!("unhandled object property key: {}", key),
             };
-            // TODO lazy add import if needed
+            // TODO add all icons upfront
+            // TODO lazy add imports if feeling fancy
             //obj_prop.value = value;
         }
     }

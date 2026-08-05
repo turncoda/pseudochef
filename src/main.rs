@@ -433,9 +433,9 @@ fn add_upgrade<C: Read + Seek>(
     set_bool_property(export, "debugQuickPickup", quick_pickup);
 
     {
-        let mut upgrade_data = get_upgrade_data(upgrade_name);
+        let mut _upgrade_data = get_upgrade_data(upgrade_name);
         // TODO override here
-        set_upgrade_data(export, upgrade_data);
+        set_upgrade_data(export, _upgrade_data);
     }
 
     let root = get_linked_export_mut(umap, idx, "RootComponent").unwrap();
@@ -569,14 +569,6 @@ fn set_obj_property(
 
 fn set_rotation(export: &mut unreal_asset::Export<PackageIndex>, angles: DVec3) {
     set_rot_property(export, "RelativeRotation", angles);
-}
-
-fn set_yaw(export: &mut unreal_asset::Export<PackageIndex>, yaw: i16) {
-    let prop = find_rot_property_mut(export, "RelativeRotation")
-        .expect("couldn't find RelativeRotation property");
-    prop.value.y.0 = yaw as f64;
-    // For some reason, unreal_asset's RotatorProperty uses Y for yaw, whereas Unreal Engine seems
-    // to use Z for yaw, or at least it looks that way in the editor.
 }
 
 fn set_extents(export: &mut unreal_asset::Export<PackageIndex>, location: DVec3) {
