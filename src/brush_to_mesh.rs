@@ -23,29 +23,16 @@ fn calculate_normal(plane: &shalrath::repr::TrianglePlane) -> DVec3 {
 fn compute_vertices(brush: &shalrath::repr::Brush) -> Vec<Vec<DVec3>> {
     let planes: Vec<_> = brush.0.iter().map(|plane| plane.plane).collect();
     let normals: Vec<_> = planes.iter().map(calculate_normal).collect();
+
     // Determinant threshold for treating three plane normals as linearly independent
     // (i.e. the planes meet at a unique point rather than being parallel/degenerate).
     const DET_EPSILON: f64 = 1e-6;
+
     // World-space distance threshold used both to decide whether a candidate point
     // actually lies inside every plane's half-space, and to dedupe vertices that
     // more than 3 planes meet at (e.g. a chamfered corner or a pyramid apex).
     const VERTEX_EPSILON: f64 = 1e-2;
-    // The .map format winds each plane's 3 points so that `calculate_normal`
-    // yields the OUTWARD normal (part of the format's semantics -- the points
-    // are otherwise arbitrary points on the plane, and tools like the clip
-    // tool write points far outside the brush, so nothing about the interior
-    // can be derived from the points themselves). `mirror_xz` above is a
-    // reflection (determinant -1), which flips the orientation of every cross
-    // product, so post-mirror the computed normals all point INWARD: a point
-    // is on a plane's interior side iff `(point - x).dot(n) >= 0`.
-    //
-    // (An earlier version instead derived each plane's interior side from the
-    // mean of the planes' definition points, assuming it fell inside the
-    // brush. It does for pristine box brushes, whose definition points are
-    // brush corners, but not in general: clipped brushes place definition
-    // points well outside the brush, the mean landed outside a plane, and
-    // that plane's sign came out inverted -- rejecting every true vertex not
-    // on the plane itself and leaving most faces empty.)
+
     let mut vertices = vec![vec![]; brush.0.len()];
     for c in planes
         .iter()
@@ -80,8 +67,7 @@ fn compute_vertices(brush: &shalrath::repr::Brush) -> Vec<Vec<DVec3>> {
         let is_vertex = planes.iter().zip(normals.iter()).all(|(plane, normal)| {
             let x = dvec3(plane.v0);
             let n = normal.normalize();
-            // n points inward post-mirror (see above), so interior points have
-            // a non-negative projection onto it.
+            // n points inward, so interior points have a non-negative projection onto it.
             (intersection - x).dot(n) >= -VERTEX_EPSILON
         });
         if !is_vertex {
@@ -121,24 +107,11 @@ pub fn get_aabb(brush: &shalrath::repr::Brush) -> AxisAlignedBoundingBox {
     AxisAlignedBoundingBox { origin, extents }
 }
 
-/// `target_vertex_spacing` is the approximate world-space distance between
-/// generated vertices on each face, both along its boundary edges and in its
-/// interior; smaller values give a denser, more uniform mesh (useful for
-/// even per-vertex lighting, including along the edges where adjacent
-/// brushes meet). A value <= 0.0 disables subdivision, leaving each face as
-/// just its original corners (still Delaunay-triangulated, unlike the old
-/// vertex-fan).
-///
-/// Returns the mesh together with the world-space `origin` it's relative to:
-/// a deterministically-chosen brush vertex (one of the plane intersections,
-/// not a subdivided/interior point), so that placing the mesh at `origin` in
-/// the world reproduces its original position. Positions in the returned
-/// mesh are all relative to this origin rather than world-space, which keeps
-/// the mesh's own coordinates small and independent of where the brush sits
-/// in the map.
+/// `target_vertex_spacing` controls triangulation density. Higher = more sparse.
+/// Returns the triangulated mesh and the origin it is relative to.
 pub fn convert_to_mesh(
     brush: &shalrath::repr::Brush,
-    target_vertex_spacing: f64, // tb space
+    target_vertex_spacing: f64,
 ) -> (pseudocooker::MeshInput, DVec3) {
     let vertices = compute_vertices(&brush);
 
@@ -150,21 +123,14 @@ pub fn convert_to_mesh(
         .min_by(|a, b| (a.x, a.y, a.z).partial_cmp(&(b.x, b.y, b.z)).unwrap())
         .expect("a convex brush has at least one vertex");
 
-    // The true (geometric) outward normal: the negation of the post-mirror
-    // (inward, see above) computed normal. This is kept separate from the
-    // `normal` passed to `triangulate_face` below: that one only needs to be
-    // *some* consistent convention to drive triangle winding (which is
-    // already correct for Unreal's culling/collision as-is), while this one
-    // is baked as an explicit per-face vertex normal so lighting doesn't
-    // depend on winding at all. Keeping the two independent means fixing
-    // lighting here can't also flip winding and break culling/collision.
+    // Inward normals.
     let normals: Vec<_> = brush
         .0
         .iter()
         .map(|plane| &plane.plane)
         .map(calculate_normal)
         .collect();
-    let true_outward_normals: Vec<DVec3> = normals.iter().map(|n| -*n).collect();
+    let true_outward_normals: Vec<DVec3> = normals.iter().map(|n| -n).collect();
 
     let mut positions = vec![];
     let mut faces = vec![];

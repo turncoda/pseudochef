@@ -98,10 +98,8 @@ const MISE_FILES: &[(&str, &[u8], &[u8], &[u8])] = &[
 const MISE_UMAP: &[u8] = include_bytes!("base/ModPack_Base.umap");
 const MISE_UEXP: &[u8] = include_bytes!("base/ModPack_Base.uexp");
 
-// World-space (map-unit) spacing between generated interior face vertices;
-// see `brush_to_mesh::convert_to_mesh`. Smaller values give smoother
-// per-vertex lighting at the cost of more geometry.
-const FACE_VERTEX_SPACING: f64 = 64.0;
+// Triangulation density control. Higher = more sparse. UE units.
+const FACE_VERTEX_SPACING: f64 = 256.0;
 
 type UnrealExportConstraint<'a, C> = Box<
     dyn Fn(&unreal_asset::Asset<C>, &unreal_asset::exports::NormalExport<PackageIndex>) -> bool
