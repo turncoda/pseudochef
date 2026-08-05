@@ -553,11 +553,13 @@ mod tests {
     }
 
     // Builds a plane from 3 points, flipping the winding order if needed so the
-    // resulting normal points away from `centroid` (i.e. outward, as brush face
-    // normals are expected to be).
-    fn plane_outward(v0: Point, v1: Point, v2: Point, centroid: DVec3) -> BrushPlane {
+    // computed normal points toward `centroid` (i.e. inward). This matches the
+    // left-handed (UE-space) brushes the functions under test now expect: the
+    // .map format winds points so `calculate_normal` is outward in TrenchBroom's
+    // right-handed space, and the tb2ue mirror flips that to inward.
+    fn plane_inward(v0: Point, v1: Point, v2: Point, centroid: DVec3) -> BrushPlane {
         let normal = calculate_normal(&TrianglePlane { v0, v1, v2 });
-        let (v0, v1, v2) = if normal.dot(dvec3(v0) - centroid) < 0.0 {
+        let (v0, v1, v2) = if normal.dot(dvec3(v0) - centroid) > 0.0 {
             (v0, v2, v1)
         } else {
             (v0, v1, v2)
@@ -568,42 +570,42 @@ mod tests {
         }
     }
 
-    /// The 10x10x10 axis-aligned box brush used throughout these tests,
-    /// with outward-wound faces.
+    /// The 10x10x10 axis-aligned box brush used throughout these tests, in
+    /// left-handed (UE) space, i.e. with inward-wound faces.
     fn box_brush() -> Brush {
         let centroid = DVec3::new(5.0, 5.0, 5.0);
         Brush::new(vec![
-            plane_outward(
+            plane_inward(
                 point(0.0, 0.0, 0.0),
                 point(0.0, 10.0, 0.0),
                 point(10.0, 0.0, 0.0),
                 centroid,
             ),
-            plane_outward(
+            plane_inward(
                 point(0.0, 0.0, 10.0),
                 point(10.0, 0.0, 10.0),
                 point(0.0, 10.0, 10.0),
                 centroid,
             ),
-            plane_outward(
+            plane_inward(
                 point(0.0, 0.0, 0.0),
                 point(10.0, 0.0, 0.0),
                 point(0.0, 0.0, 10.0),
                 centroid,
             ),
-            plane_outward(
+            plane_inward(
                 point(0.0, 10.0, 0.0),
                 point(0.0, 10.0, 10.0),
                 point(10.0, 10.0, 0.0),
                 centroid,
             ),
-            plane_outward(
+            plane_inward(
                 point(0.0, 0.0, 0.0),
                 point(0.0, 0.0, 10.0),
                 point(0.0, 10.0, 0.0),
                 centroid,
             ),
-            plane_outward(
+            plane_inward(
                 point(10.0, 0.0, 0.0),
                 point(10.0, 10.0, 0.0),
                 point(10.0, 0.0, 10.0),
@@ -624,11 +626,11 @@ mod tests {
         let b2 = point(10.0 * s, 0.0, 10.0 * s);
         let c2 = point(0.0, 10.0 * s, 10.0 * s);
         Brush::new(vec![
-            plane_outward(a, b, c, centroid),    // bottom cap
-            plane_outward(a2, c2, b2, centroid), // top cap
-            plane_outward(a, a2, b2, centroid),  // side face along AB (y = 0)
-            plane_outward(a, c, c2, centroid),   // side face along AC (x = 0)
-            plane_outward(b, b2, c2, centroid),  // hypotenuse side face along BC
+            plane_inward(a, b, c, centroid),    // bottom cap
+            plane_inward(a2, c2, b2, centroid), // top cap
+            plane_inward(a, a2, b2, centroid),  // side face along AB (y = 0)
+            plane_inward(a, c, c2, centroid),   // side face along AC (x = 0)
+            plane_inward(b, b2, c2, centroid),  // hypotenuse side face along BC
         ])
     }
 
@@ -937,7 +939,10 @@ mod tests {
             shalrath::parser::repr::parse_map(MAP.trim()).expect("parse embedded test map");
         for ent in ast.0 {
             for brush in ent.brushes.0.iter() {
-                let (mesh, _origin) = convert_to_mesh(brush, 64.0);
+                // The embedded map is raw (right-handed) TrenchBroom data, so
+                // convert it to left-handed UE space first, as production does.
+                let brush = crate::tb2ue::brush(brush.clone());
+                let (mesh, _origin) = convert_to_mesh(&brush, 64.0);
                 let boundary_edges = find_boundary_edges(&mesh);
                 assert!(
                     boundary_edges.is_empty(),
@@ -976,7 +981,10 @@ mod tests {
             shalrath::parser::repr::parse_map(MAP.trim()).expect("parse embedded test map");
         for ent in ast.0 {
             for (i, brush) in ent.brushes.0.iter().enumerate() {
-                let (mesh, _origin) = convert_to_mesh(brush, 64.0);
+                // The embedded map is raw (right-handed) TrenchBroom data, so
+                // convert it to left-handed UE space first, as production does.
+                let brush = crate::tb2ue::brush(brush.clone());
+                let (mesh, _origin) = convert_to_mesh(&brush, 64.0);
                 let boundary_edges = find_boundary_edges(&mesh);
                 assert!(
                     boundary_edges.is_empty(),
