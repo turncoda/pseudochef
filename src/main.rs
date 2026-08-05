@@ -748,28 +748,35 @@ fn main() {
         };
         match classname.as_ref() {
             "worldspawn" => {
-                for brush in &ent.brushes.0 {
+                for brush in ent.brushes.0.into_iter() {
+                    let brush = tb2ue::brush(brush);
                     num_world_brushes += 1;
                     let name = format!("WorldBrush{}", num_world_brushes);
                     let (abs_path, origin) =
-                        pak_add_brush(&mut pak, brush, &map_name, &name).unwrap();
+                        pak_add_brush(&mut pak, &brush, &map_name, &name).unwrap();
                     let idx = add_static_mesh_import(&mut umap, &abs_path);
                     add_static_mesh_actor(&mut umap, idx, origin);
                 }
             }
             "trigger_safe_zone" => {
-                for brush in &ent.brushes.0 {
-                    let AxisAlignedBoundingBox { origin, extents } = get_aabb(brush);
+                for brush in ent.brushes.0.into_iter() {
+                    let brush = tb2ue::brush(brush);
+                    // TODO this should really get the min-area cuboid. In other words, allow the
+                    // bounding box to rotate, since UE box colliders are allowed to rotate.
+                    // Otherwise this results in surprising behavior if the user assumes that the
+                    // brush is directly used as the collider shape.
+                    let AxisAlignedBoundingBox { origin, extents } = get_aabb(&brush);
                     let idx = add_safe_zone_actor(&mut umap, origin, extents);
                     safe_zones.push((idx, props.get("target").map(|s| s.to_string())));
                 }
             }
             "trigger_hazard_zone" => {
-                for brush in &ent.brushes.0 {
+                for brush in ent.brushes.0.into_iter() {
+                    let brush = tb2ue::brush(brush);
                     num_hazard_brushes += 1;
                     let name = format!("HazardZoneBrush{}", num_hazard_brushes);
                     let (abs_path, origin) =
-                        pak_add_brush(&mut pak, brush, &map_name, &name).unwrap();
+                        pak_add_brush(&mut pak, &brush, &map_name, &name).unwrap();
                     let idx = add_static_mesh_import(&mut umap, &abs_path);
                     add_hazard_actor(&mut umap, idx, origin);
                 }

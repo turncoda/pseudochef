@@ -5,7 +5,6 @@ use glam::{DMat3, DVec3};
 use itertools::Itertools;
 use spade::{DelaunayTriangulation, Point2, Triangulation};
 use std::collections::HashMap;
-use crate::tb2ue;
 
 fn dvec3(p: shalrath::repr::Point) -> DVec3 {
     DVec3::new(p.x as f64, p.y as f64, p.z as f64)
@@ -19,6 +18,8 @@ fn calculate_normal(plane: &shalrath::repr::TrianglePlane) -> DVec3 {
     a.cross(b)
 }
 
+/// Assumption: input brush is convex in a left-handed (UE) coordinate system.
+/// Otherwise, behavior is undefined.
 fn compute_vertices(brush: &shalrath::repr::Brush) -> Vec<Vec<DVec3>> {
     let planes: Vec<_> = brush.0.iter().map(|plane| plane.plane).collect();
     let normals: Vec<_> = planes.iter().map(calculate_normal).collect();
@@ -108,9 +109,7 @@ pub struct AxisAlignedBoundingBox {
 }
 
 pub fn get_aabb(brush: &shalrath::repr::Brush) -> AxisAlignedBoundingBox {
-    // TODO externalize this conversion to make it explicit
-    let brush = tb2ue::brush(brush.clone());
-    let vertices = compute_vertices(&brush);
+    let vertices = compute_vertices(brush);
     let mut min = DVec3::new(f64::INFINITY, f64::INFINITY, f64::INFINITY);
     let mut max = DVec3::new(f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
     vertices.into_iter().flatten().for_each(|v| {
@@ -141,20 +140,9 @@ pub fn convert_to_mesh(
     brush: &shalrath::repr::Brush,
     target_vertex_spacing: f64, // tb space
 ) -> (pseudocooker::MeshInput, DVec3) {
-    // TrenchBroom uses a right-handed coordinate system with +z pointing up.
-    // Unreal uses a left-handed coordinate system with +z pointing up.
-    // So, we mirror across the xz-plane when converting.
-    // Also, we scale up to visually align with Unreal distance units.
-    // TODO externalize this conversion
-    let brush = tb2ue::brush(brush.clone());
-
     let vertices = compute_vertices(&brush);
 
-    // Pick a deterministic brush vertex (a real plane intersection, not a
-    // subdivided or interior-sampled point) to serve as the mesh's origin.
-    // Combinations are visited in a fixed order and float ops are
-    // deterministic, so this always picks the same corner for the same
-    // brush; lexicographic order is an arbitrary but stable tie-break.
+    // Deterministically pick a vertex to be the origin.
     let origin = vertices
         .iter()
         .flatten()
