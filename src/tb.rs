@@ -1,19 +1,6 @@
 use glam::DVec3;
 
-const TB_TO_UNREAL_SCALE: f32 = 4.0;
-
-fn tb_space_to_ue_space(mut a: DVec3) -> DVec3 {
-    a.y = -a.y;
-    a *= TB_TO_UNREAL_SCALE as f64;
-    a
-}
-
-fn tb_vec3_to_ue_dvec3(s: &str) -> DVec3 {
-    let v: Vec<f64> = s.split_whitespace().map(|n| n.parse().unwrap()).collect();
-    let dv = DVec3::from_slice(&v);
-    tb_space_to_ue_space(dv)
-}
-
+/// e.g. "1" -> true
 pub fn unwrap_bool<S: AsRef<str>>(opt: Option<S>) -> bool {
     let Some(s) = opt else {
         return false;
@@ -25,27 +12,31 @@ pub fn unwrap_bool<S: AsRef<str>>(opt: Option<S>) -> bool {
     }
 }
 
+/// e.g. "0 0 0" -> DVec3{0, 0, 0}
 pub fn unwrap_vec3<S: AsRef<str>>(opt: Option<S>) -> DVec3 {
     let Some(s) = opt else {
         return DVec3::default();
     };
-    tb_vec3_to_ue_dvec3(s.as_ref())
+    let v: Vec<f64> = s.as_ref().split_whitespace().map(|n| n.parse().unwrap()).collect();
+    assert_eq!(v.len(), 3);
+    DVec3::from_slice(&v)
 }
 
-pub fn unwrap_i16<S: AsRef<str>>(opt: Option<S>) -> i16 {
+/// Parses a single number as yaw in a DVec3 of pitch, yaw, and roll.
+/// e.g. "3" -> DVec3{0, 3, 0}
+pub fn unwrap_angle<S: AsRef<str>>(opt: Option<S>) -> DVec3 {
     let Some(s) = opt else {
-        return 0;
+        return DVec3::default();
     };
     let s = s.as_ref();
     if s.len() == 0 {
-        return 0;
+        return DVec3::default();
     }
-    let opt: Result<i16, _> = s.parse();
+    let opt: Result<f64, _> = s.parse();
     let Ok(angle) = opt else {
-        panic!("failed to parse 16-bit signed integer angle from: '{}'", s);
+        panic!("failed to parse 64-bit float angle from: '{}'", s);
     };
-    let angle = -angle; // TB (right-handed) to UE (left-handed)
-    angle
+    DVec3::new(0.0, angle, 0.0)
 }
 
 pub fn unwrap_string_or<'a, S: AsRef<str>>(opt: Option<&'a S>, default: &'a str) -> &'a str {

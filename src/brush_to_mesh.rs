@@ -5,8 +5,7 @@ use glam::{DMat3, DVec3};
 use itertools::Itertools;
 use spade::{DelaunayTriangulation, Point2, Triangulation};
 use std::collections::HashMap;
-
-const TB_TO_UNREAL_SCALE: f32 = 4.0;
+use crate::tb2ue;
 
 fn dvec3(p: shalrath::repr::Point) -> DVec3 {
     DVec3::new(p.x as f64, p.y as f64, p.z as f64)
@@ -18,32 +17,6 @@ fn calculate_normal(plane: &shalrath::repr::TrianglePlane) -> DVec3 {
     let a = p2 - p0;
     let b = p1 - p0;
     a.cross(b)
-}
-fn flip_y(point: &mut shalrath::repr::Point) {
-    point.y = -point.y;
-}
-fn scale_point(point: &mut shalrath::repr::Point, scale: f32) {
-    point.x *= scale;
-    point.y *= scale;
-    point.z *= scale;
-}
-fn scale_brush(brush: &mut shalrath::repr::Brush, scale: f32) {
-    for plane in &mut brush.0 {
-        scale_point(&mut plane.plane.v0, scale);
-        scale_point(&mut plane.plane.v1, scale);
-        scale_point(&mut plane.plane.v2, scale);
-    }
-}
-fn mirror_xz(brush: &shalrath::repr::Brush) -> shalrath::repr::Brush {
-    let mut planes = vec![];
-    for plane in &brush.0 {
-        let mut mirrored = plane.clone();
-        flip_y(&mut mirrored.plane.v0);
-        flip_y(&mut mirrored.plane.v1);
-        flip_y(&mut mirrored.plane.v2);
-        planes.push(mirrored);
-    }
-    shalrath::repr::Brush::new(planes)
 }
 
 fn compute_vertices(brush: &shalrath::repr::Brush) -> Vec<Vec<DVec3>> {
@@ -135,8 +108,8 @@ pub struct AxisAlignedBoundingBox {
 }
 
 pub fn get_aabb(brush: &shalrath::repr::Brush) -> AxisAlignedBoundingBox {
-    let mut brush = mirror_xz(brush);
-    scale_brush(&mut brush, TB_TO_UNREAL_SCALE);
+    // TODO externalize this conversion to make it explicit
+    let brush = tb2ue::brush(brush.clone());
     let vertices = compute_vertices(&brush);
     let mut min = DVec3::new(f64::INFINITY, f64::INFINITY, f64::INFINITY);
     let mut max = DVec3::new(f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
@@ -172,8 +145,8 @@ pub fn convert_to_mesh(
     // Unreal uses a left-handed coordinate system with +z pointing up.
     // So, we mirror across the xz-plane when converting.
     // Also, we scale up to visually align with Unreal distance units.
-    let mut brush = mirror_xz(brush);
-    scale_brush(&mut brush, TB_TO_UNREAL_SCALE);
+    // TODO externalize this conversion
+    let brush = tb2ue::brush(brush.clone());
 
     let vertices = compute_vertices(&brush);
 

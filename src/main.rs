@@ -20,6 +20,8 @@ use upgrade_data::{get_upgrade_data, set_upgrade_data};
 
 mod tb;
 
+mod tb2ue;
+
 // For debugging purposes; may not be called
 #[allow(dead_code)]
 mod obj_export;
@@ -161,26 +163,6 @@ fn find_export<C: Read + Seek>(
     maybe_idx
 }
 
-fn find_rot_property_mut<'a>(
-    export: &'a mut unreal_asset::Export<PackageIndex>,
-    name: &str,
-) -> Option<&'a mut unreal_asset::properties::vector_property::RotatorProperty> {
-    let mut result = None;
-    let props = &mut export.get_normal_export_mut().unwrap().properties;
-    for prop in props {
-        if let unreal_asset::properties::Property::StructProperty(struct_prop) = prop
-            && struct_prop.name.get_content(|content| content == name)
-        {
-            for prop in &mut struct_prop.value {
-                if let unreal_asset::properties::Property::RotatorProperty(rot_prop) = prop {
-                    result = Some(rot_prop);
-                }
-            }
-        }
-    }
-    result
-}
-
 fn find_vec_property<'a>(
     export: &'a unreal_asset::Export<PackageIndex>,
     name: &str,
@@ -194,6 +176,26 @@ fn find_vec_property<'a>(
             for prop in &struct_prop.value {
                 if let unreal_asset::properties::Property::VectorProperty(vec_prop) = prop {
                     result = Some(vec_prop);
+                }
+            }
+        }
+    }
+    result
+}
+
+fn find_rot_property_mut<'a>(
+    export: &'a mut unreal_asset::Export<PackageIndex>,
+    name: &str,
+) -> Option<&'a mut unreal_asset::properties::vector_property::RotatorProperty> {
+    let mut result = None;
+    let props = &mut export.get_normal_export_mut().unwrap().properties;
+    for prop in props {
+        if let unreal_asset::properties::Property::StructProperty(struct_prop) = prop
+            && struct_prop.name.get_content(|content| content == name)
+        {
+            for prop in &mut struct_prop.value {
+                if let unreal_asset::properties::Property::RotatorProperty(rot_prop) = prop {
+                    result = Some(rot_prop);
                 }
             }
         }
@@ -397,14 +399,14 @@ fn add_save_point<C: Read + Seek>(
     idx
 }
 
-fn add_gate<C: Read + Seek>(umap: &mut unreal_asset::Asset<C>, location: DVec3, yaw: i16) {
+fn add_gate<C: Read + Seek>(umap: &mut unreal_asset::Asset<C>, location: DVec3, angles: DVec3) {
     let idx = find_gate_static_mesh_actor(umap);
     let idx = deep_clone_export(umap, idx);
     add_actor_to_level(umap, idx);
 
     let root = get_linked_export_mut(umap, idx, "RootComponent").unwrap();
     set_location(root, location);
-    set_yaw(root, yaw);
+    set_rotation(root, angles);
 }
 
 fn add_jump_bubble<C: Read + Seek>(umap: &mut unreal_asset::Asset<C>, location: DVec3) {
@@ -445,7 +447,7 @@ fn add_upgrade<C: Read + Seek>(
 fn add_player_start<C: Read + Seek>(
     umap: &mut unreal_asset::Asset<C>,
     location: DVec3,
-    yaw: i16,
+    angles: DVec3,
     tag: &str,
 ) -> PackageIndex {
     let idx = find_export(umap, &[with_name("PlayerStart")]).unwrap();
@@ -458,7 +460,7 @@ fn add_player_start<C: Read + Seek>(
 
     let root = get_linked_export_mut(umap, idx, "RootComponent").unwrap();
     set_location(root, location);
-    set_yaw(root, yaw);
+    set_rotation(root, angles);
 
     idx
 }
@@ -565,6 +567,10 @@ fn set_obj_property(
     prop.value = idx;
 }
 
+fn set_rotation(export: &mut unreal_asset::Export<PackageIndex>, angles: DVec3) {
+    set_rot_property(export, "RelativeRotation", angles);
+}
+
 fn set_yaw(export: &mut unreal_asset::Export<PackageIndex>, yaw: i16) {
     let prop = find_rot_property_mut(export, "RelativeRotation")
         .expect("couldn't find RelativeRotation property");
@@ -579,6 +585,15 @@ fn set_extents(export: &mut unreal_asset::Export<PackageIndex>, location: DVec3)
     prop.value.x.0 = location.x;
     prop.value.y.0 = location.y;
     prop.value.z.0 = location.z;
+}
+
+fn set_rot_property(export: &mut unreal_asset::Export<PackageIndex>, name: &str, value: DVec3) {
+    let prop =
+        find_rot_property_mut(export, name).expect(&format!("couldn't find property: {}", name));
+    println!("### {}", value);
+    //prop.value.x.0 = value.x;
+    prop.value.y.0 = value.y;
+    //prop.value.z.0 = value.z;
 }
 
 fn set_vec_property(export: &mut unreal_asset::Export<PackageIndex>, name: &str, value: DVec3) {
@@ -760,38 +775,38 @@ fn main() {
                 }
             }
             "info_respawn_anchor" => {
-                let origin = tb::unwrap_vec3(props.get("origin"));
+                let origin = tb2ue::point(tb::unwrap_vec3(props.get("origin")));
                 if let Some(tag) = props.get("tag") {
                     respawn_anchors.insert(tag.to_string(), origin);
                 }
             }
             "info_player_start" => {
-                let origin = tb::unwrap_vec3(props.get("origin"));
-                let angle = tb::unwrap_i16(props.get("angle"));
+                let origin = tb2ue::point(tb::unwrap_vec3(props.get("origin")));
+                let angles = tb2ue::angles(tb::unwrap_angle(props.get("angle")));
                 let tag = tb::unwrap_string_or(props.get("tag"), "gameStart");
-                let idx = add_player_start(&mut umap, origin, angle, tag);
+                let idx = add_player_start(&mut umap, origin, angles, tag);
                 player_starts.insert(tag.to_string(), idx);
             }
             "item_upgrade" => {
-                let origin = tb::unwrap_vec3(props.get("origin"));
+                let origin = tb2ue::point(tb::unwrap_vec3(props.get("origin")));
                 let upgrade_name = tb::unwrap_string_or(props.get("upgrade"), "attack");
                 let quick_pickup = tb::unwrap_bool(props.get("quick_pickup"));
                 add_upgrade(&mut umap, origin, upgrade_name, quick_pickup);
             }
             "misc_jump_bubble" => {
-                let origin = tb::unwrap_vec3(props.get("origin"));
+                let origin = tb2ue::point(tb::unwrap_vec3(props.get("origin")));
                 add_jump_bubble(&mut umap, origin);
             }
             "misc_save_point" => {
-                let origin = tb::unwrap_vec3(props.get("origin"));
+                let origin = tb2ue::point(tb::unwrap_vec3(props.get("origin")));
                 let target = tb::unwrap_string_or(props.get("target"), "gameStart");
                 let idx = add_save_point(&mut umap, origin);
                 save_points.push((idx, target.to_string()));
             }
             "prop_gate" => {
-                let origin = tb::unwrap_vec3(props.get("origin"));
-                let angle = tb::unwrap_i16(props.get("angle"));
-                add_gate(&mut umap, origin, angle);
+                let origin = tb2ue::point(tb::unwrap_vec3(props.get("origin")));
+                let angles = tb2ue::angles(tb::unwrap_vec3(props.get("angles")));
+                add_gate(&mut umap, origin, angles);
             }
             _ => {}
         };
