@@ -125,15 +125,15 @@ Used to tweak respawn location associated with a safe_zone.
 //   * Origin: Center-bottom
 //   * Dimensions: 20, 400, 600
 // ============================================================================
-@PointClass size(-8 -8 0, 8 8 16) model({"path": "progs/gate.mdl"}) = prop_gate : "
+@PointClass size(-8 -8 0, 8 8 16) model({"path": "gate.obj"}) = prop_gate : "
 
 A fixed-size gate. Not from the base game.
 
-Can be rotated using the angle property.
+Can be rotated using the angles property.
 
 Pairs well with a hit_switch.
 
 "
 [
-    angle(integer) : "Angle"
+    angles(angle) : "Pitch Yaw Roll (Y Z X)" : "0 0 0"
 ]
