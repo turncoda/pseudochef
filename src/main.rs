@@ -761,10 +761,11 @@ fn main() {
             "trigger_safe_zone" => {
                 for brush in ent.brushes.0.into_iter() {
                     let brush = tb2ue::brush(brush);
-                    // TODO this should really get the min-area cuboid. In other words, allow the
-                    // bounding box to rotate, since UE box colliders are allowed to rotate.
-                    // Otherwise this results in surprising behavior if the user assumes that the
-                    // brush is directly used as the collider shape.
+                    // TODO this should really get the min bounding cuboid, not the AABB. In other
+                    // words, allow the bounding box to rotate, since UE box colliders are allowed
+                    // to rotate. Otherwise this results in surprising behavior if the user assumes
+                    // they can rotate the safe zone bounding box (they can, but the AABB will just
+                    // add more - potentially undesirable - collidable volume).
                     let AxisAlignedBoundingBox { origin, extents } = get_aabb(&brush);
                     let idx = add_safe_zone_actor(&mut umap, origin, extents);
                     safe_zones.push((idx, props.get("target").map(|s| s.to_string())));

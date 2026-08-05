@@ -100,6 +100,8 @@ Functions as a soft invisible checkpoint. Upon collision with a hazard_zone, pla
 
 Can target a respawn_anchor if respawn location needs to be tweaked. If no target is specified, the center-bottom of the safe_zone's axis-aligned bounding box is used.
 
+Due to UE collision limitations, arbitrary brush shapes are not supported. The axis-aligned bounding box of the brush will be used. This could be improved in the future to allow the bounding box to have arbitrary angles, but at the end of the day it probably has to be a box collider on the UE end.
+
 "
 [
     target(target_destination) : "Target (respawn_anchor)"
