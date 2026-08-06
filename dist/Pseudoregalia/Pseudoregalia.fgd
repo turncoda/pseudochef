@@ -3,13 +3,15 @@
 // Above each entity definition, a measurement of the actor's relevant
 // collision is recorded in UE units.
 
+@baseclass size(-8 -8 0, 8 8 16) = BottomAnchor []
+
 @SolidClass = worldspawn : "World entity" []
 
 // === BP_PlayerGoatMain ======================================================
 //   * Capsule half height: 65
 //   * Capsule side radius: 22
 // ============================================================================
-@PointClass size(-6 -6 -16, 6 6 16) color(0 255 0) = info_player_start : "
+@PointClass size(-7 -7 -21, 7 7 21) color(0 255 0) = info_player_start : "
 
 If you specify 'tag', you can target it from a save_point.
 
@@ -26,7 +28,7 @@ If you have the quickstart mod installed, you can also start the game with '-spa
 //   * Capsule half height: 33
 //   * Capsule side radius: 20
 // ============================================================================
-@PointClass size(-5 -5 -8, 5 5 8) = npc_goatling : "
+@PointClass size(-7 -7 -11, 7 7 11) = npc_goatling : "
 
 Goatling.
 
@@ -37,7 +39,7 @@ Goatling.
 //   * Box relative location: 0, 0, 107.400539
 //   * Box extents: 32, 32, 110
 // ============================================================================
-@PointClass size(-8 -8 0, 8 8 55) color(128 255 255) = misc_save_point : "
+@PointClass size(-10 -10 0, 10 10 70) color(128 255 255) = misc_save_point : "
 
 You can target a player_start by putting its 'tag' into this entity's 'target' property.
 
@@ -50,7 +52,7 @@ You can target a player_start by putting its 'tag' into this entity's 'target' p
 //   * Sphere relative location: 0, 0, 0
 //   * Sphere radius: 130
 // ============================================================================
-@PointClass size(-32 -32 -32, 32 32 32) color(255 127 255) = misc_jump_bubble :
+@PointClass size(-42 -42 -42, 42 42 42) color(255 127 255) = misc_jump_bubble :
     "Jump bubble."
 []
 
@@ -58,7 +60,7 @@ You can target a player_start by putting its 'tag' into this entity's 'target' p
 //   * Sphere relative location: 0, 0, 100
 //   * Sphere radius: 60
 // ============================================================================
-@PointClass size(-15 -15 10, 15 15 40) color(200 200 200) = item_upgrade : "
+@PointClass size(-16 -16 16, 16 16 48) color(200 200 200) = item_upgrade : "
 
 Upgrade pickup.
 
@@ -110,7 +112,7 @@ Due to UE collision limitations, arbitrary brush shapes are not supported. The a
 // === Respawn anchor (custom) ================================================
 //   * Part of another custom actor: BP_SafeZone
 // ============================================================================
-@PointClass size(-8 -8 0, 8 8 16) = info_respawn_anchor : "
+@PointClass base(BottomAnchor) = info_respawn_anchor : "
 
 Used to tweak respawn location associated with a safe_zone.
 
@@ -119,7 +121,6 @@ Used to tweak respawn location associated with a safe_zone.
     tag(target_source) : "Tag"
 ]
 
-
 // === SM_StarterGate (custom) ================================================
 //   * Custom static mesh with actual UVs.
 //     * (Other meshes in the game seem to use global coordinates as UVs.)
@@ -127,7 +128,7 @@ Used to tweak respawn location associated with a safe_zone.
 //   * Origin: Center-bottom
 //   * Dimensions: 20, 400, 600
 // ============================================================================
-@PointClass size(-8 -8 0, 8 8 16) model({"path": "gate.obj"}) = prop_gate : "
+@PointClass base(BottomAnchor) model({"path": "gate.obj"}) = prop_gate : "
 
 A fixed-size gate. Not from the base game.
 

@@ -1,6 +1,6 @@
 use glam::DVec3;
 
-const TB_TO_UNREAL_SCALE: f32 = 4.0;
+const TB_TO_UNREAL_SCALE: f32 = 3.125; // TB 32 => UE 100
 
 pub fn point(mut a: DVec3) -> DVec3 {
     a.y = -a.y;
