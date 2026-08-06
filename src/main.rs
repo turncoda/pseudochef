@@ -581,9 +581,9 @@ fn set_rot_property(export: &mut unreal_asset::Export<PackageIndex>, name: &str,
     let prop =
         find_rot_property_mut(export, name).expect(&format!("couldn't find property: {}", name));
     println!("### {}", value);
-    //prop.value.x.0 = value.x;
+    prop.value.x.0 = value.x;
     prop.value.y.0 = value.y;
-    //prop.value.z.0 = value.z;
+    prop.value.z.0 = value.z;
 }
 
 fn set_vec_property(export: &mut unreal_asset::Export<PackageIndex>, name: &str, value: DVec3) {

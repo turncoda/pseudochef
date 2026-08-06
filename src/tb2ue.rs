@@ -43,6 +43,10 @@ pub fn brush(mut b: shalrath::repr::Brush) -> shalrath::repr::Brush {
 }
 
 pub fn angles(mut a: DVec3) -> DVec3 {
-    a *= -1.0;
+    // From experiments: when going from TB to UE,
+    // pitch and yaw are negated, while roll remains the same.
+    // I'm not sure of the mathematical reasoning here.
+    a.x *= -1.0; // pitch
+    a.y *= -1.0; // yaw
     a
 }
