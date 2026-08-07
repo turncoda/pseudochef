@@ -134,9 +134,51 @@ A fixed-size gate. Not from the base game.
 
 Can be rotated using the angles property.
 
-Pairs well with a hit_switch.
+Can be designated as 'child' to an info_parent, so as to be switch-activated.
 
 "
 [
     angles(angle) : "Pitch Yaw Roll (Y Z X)" : "0 0 0"
+    tag(target_source) : "target with info_parent"
+]
+
+@PointClass = info_parent : "
+
+A container for 'child' (can be a prop_gate or func_movable).
+
+Target this with a func_switch. On switch activation, moves to the info_marker specified by 'destination', carrying 'child' along with it (maintaining its relative transform).
+
+"
+[
+    destination(target_destination) : "info_marker"
+    child(target_destination) : "prop_gate/func_movable"
+    tag(target_source) : "target from a func_switch"
+]
+
+@PointClass = info_marker : "
+
+Marks a target location and orientation for an info_parent.
+
+"
+[
+    angles(angle) : "Pitch Yaw Roll (Y Z X)" : "0 0 0"
+    tag(target_source) : "target from an info_parent"
+]
+
+@SolidClass = func_movable : "
+
+Can be designated as 'child' to an info_parent, so as to be switch-activated.
+
+"
+[
+    tag(target_source) : "target with info_parent"
+]
+
+@PointClass base(BottomAnchor) = func_switch : "
+
+Triggers an info_parent to move when hit.
+
+"
+[
+    target(target_destination) : "info_parent"
 ]
