@@ -120,14 +120,8 @@ pub(crate) fn remap_property(
     }
 }
 
-// Deep-clones the export at `idx` together with every export it owns (see
-// `collect_owned_exports`), e.g. cloning an actor also clones its components. All
-// cross references among the cloned subtree are rewritten to point at the new
-// clones: outer/class/super/template indices, the four X_before_Y_dependencies
-// lists, and object properties (including ones nested in arrays/sets/maps/structs).
-// References to anything outside the cloned subtree (imports, or exports not owned
-// by `idx`, such as the level the export lives in) are left pointing at the
-// originals, so the clone is added alongside the original rather than replacing it.
+/// Clone an export along with all of the exports it owns, transitively or directly.
+/// Rewrite references (e.g. outer indices, X_before_Y_dependencies, object properties).
 pub(crate) fn deep_clone_export<C: Read + Seek>(
     umap: &mut unreal_asset::Asset<C>,
     idx: PackageIndex,
