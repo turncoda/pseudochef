@@ -1,7 +1,7 @@
 //! `pseudocooker` -- UE5.1 static mesh cooker
 //!
 //! Takes raw mesh data as input and outputs cooked UE5.1-compliant static mesh uasset.
-//! 
+//!
 //! Overview:
 //!   - BodySetup, including PhysXPC collision ([`bodysetup`], [`physxpc`])
 //!   - NavCollision ([`navcollision`])
@@ -27,8 +27,6 @@ pub use package::CookOptions;
 pub struct CookedAsset {
     pub uasset: Vec<u8>,
     pub uexp: Vec<u8>,
-    /// ubulk not used
-    pub ubulk: Vec<u8>,
 }
 
 impl CookedAsset {
@@ -36,7 +34,6 @@ impl CookedAsset {
         std::fs::create_dir_all(dir)?;
         std::fs::write(dir.join(format!("{asset_name}.uasset")), &self.uasset)?;
         std::fs::write(dir.join(format!("{asset_name}.uexp")), &self.uexp)?;
-        std::fs::write(dir.join(format!("{asset_name}.ubulk")), &self.ubulk)?;
         Ok(())
     }
 }
@@ -49,5 +46,5 @@ impl CookedAsset {
 pub fn cook(mesh_input: &MeshInput, asset_name: &str) -> CookedAsset {
     let render_mesh = mesh::build_render_mesh(mesh_input);
     let (uasset, uexp) = package::cook_package(asset_name, &render_mesh, &CookOptions::default());
-    CookedAsset { uasset, uexp, ubulk: Vec::new() }
+    CookedAsset { uasset, uexp }
 }

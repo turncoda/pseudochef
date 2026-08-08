@@ -1,5 +1,5 @@
 //! Produces serialized render mesh data as expected by FStaticMeshLODResources.
-//! 
+//!
 //! Notes:
 //!   - Per-face-corner vertices are never welded across faces.
 //!   - Tangent packing uses a standard int8 quantization (round(component*127), clamped to
@@ -17,9 +17,17 @@ use std::collections::HashMap;
 pub type Vec3 = [f64; 3];
 pub type Vec2 = [f64; 2];
 
-/// One face-corner: an index into `MeshInput::positions`, plus optional
-/// indices into `uvs` / `normals` (None means "not authored for this
-/// corner", mirroring OBJ's optional `vt`/`vn` face-reference slots).
+// --- OBJ-inspired mesh-input format ---
+
+/// In OBJ, faces are defined like this:
+///
+/// f 1 2 3
+///
+/// Or maybe:
+///
+/// f 6/4/1 3/5/3 7/6/5
+///
+/// Each element contains an vertex index, and optionally a texture and normal index.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Corner {
     pub position: usize,
@@ -29,7 +37,11 @@ pub struct Corner {
 
 impl Corner {
     pub fn new(position: usize) -> Self {
-        Corner { position, uv: None, normal: None }
+        Corner {
+            position,
+            uv: None,
+            normal: None,
+        }
     }
 
     pub fn with_uv(mut self, uv: usize) -> Self {
@@ -43,18 +55,13 @@ impl Corner {
     }
 }
 
-/// A polygon (already fan-triangulated by the caller is NOT required --
-/// `build_render_mesh` fan-triangulates arbitrary N-gons itself, exactly
-/// like the Python OBJ loader did) with a material assignment.
+/// N-sided face, not necessarily triangular.
 #[derive(Clone, Debug)]
 pub struct Face {
     pub material_index: usize,
     pub corners: Vec<Corner>,
 }
 
-/// Raw mesh input: the direct-data equivalent of what `load_obj_full` used
-/// to parse out of a Wavefront OBJ. This is the crate's whole public input
-/// surface -- no file format, just vertex/face/uv data.
 #[derive(Clone, Debug, Default)]
 pub struct MeshInput {
     pub positions: Vec<Vec3>,
@@ -63,6 +70,8 @@ pub struct MeshInput {
     pub faces: Vec<Face>,
     pub material_names: Vec<String>,
 }
+
+// --- UE-specific structs ---
 
 #[derive(Clone, Debug)]
 pub struct Tangent {
@@ -115,38 +124,22 @@ fn normalize(v: Vec3) -> Vec3 {
 }
 
 fn cross(a: Vec3, b: Vec3) -> Vec3 {
-    [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
 }
 
 fn sub(a: Vec3, b: Vec3) -> Vec3 {
     [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
 }
 
-/// Standard int8 quantization (see module docs -- not UE's exact
-/// FPackedNormal rounding, but geometry/collision-neutral).
 fn pack_tangent_component(x: f64) -> i8 {
     let v = x.max(-1.0).min(1.0);
-    let rounded = python_round(v * 127.0);
-    rounded.max(-127.0).min(127.0) as i8
-}
-
-/// Python 3's built-in `round()` on a float does round-half-to-even
-/// (banker's rounding), same as IEEE 754 roundTiesToEven -- match that
-/// exactly rather than Rust f64::round()'s round-half-away-from-zero, since
-/// a component landing exactly on x.5 would otherwise pack to a different
-/// int8 value than the Python original.
-fn python_round(x: f64) -> f64 {
-    let floor = x.floor();
-    let diff = x - floor;
-    if (diff - 0.5).abs() < 1e-9 {
-        if (floor as i64) % 2 == 0 {
-            floor
-        } else {
-            floor + 1.0
-        }
-    } else {
-        (x).round()
-    }
+    let v = v * 127.0;
+    let v = v.round();
+    v.max(-127.0).min(127.0) as i8
 }
 
 pub fn build_render_mesh(mesh: &MeshInput) -> RenderMesh {
@@ -168,9 +161,10 @@ pub fn build_render_mesh(mesh: &MeshInput) -> RenderMesh {
         }
     }
 
-    // When no normals were supplied at all, compute SMOOTH per-vertex normals (area-weighted
-    // average of adjacent face normals, keyed by position index) rather than flat per-face normals.
-    let has_any_vn = faces.iter().any(|f| f.corners.iter().any(|c| c.normal.is_some()));
+    // When no normals are supplied, infer them from the average of adjacent face normals.
+    let has_any_vn = faces
+        .iter()
+        .any(|f| f.corners.iter().any(|c| c.normal.is_some()));
     let smooth_normals: Option<Vec<Vec3>> = if !has_any_vn {
         let mut accum = vec![[0.0f64; 3]; positions_in.len()];
         for tris in tris_by_material.values() {
@@ -199,7 +193,11 @@ pub fn build_render_mesh(mesh: &MeshInput) -> RenderMesh {
     let mut sections: Vec<Section> = Vec::new();
 
     let arbitrary_tangent = |n: Vec3| -> Vec3 {
-        let helper = if n[2].abs() < 0.9 { [0.0, 0.0, 1.0] } else { [1.0, 0.0, 0.0] };
+        let helper = if n[2].abs() < 0.9 {
+            [0.0, 0.0, 1.0]
+        } else {
+            [1.0, 0.0, 0.0]
+        };
         normalize(cross(helper, n))
     };
 
@@ -207,21 +205,22 @@ pub fn build_render_mesh(mesh: &MeshInput) -> RenderMesh {
         let first_index = out_indices.len();
         let min_vert = out_positions.len();
         // Wedge dedup keyed by (posIdx, uvIdx, normalIdx): reuses a render vertex whenever a face
-        // corner repeats the exact same attribute combo. 
+        // corner repeats the exact same attribute combo.
         let mut wedge_cache: HashMap<Corner, u32> = HashMap::new();
 
         for (c0, c1, c2) in tris {
             let corners = [*c0, *c1, *c2];
-            let face_normals: [Vec3; 3] = if c0.normal.is_some() && c1.normal.is_some() && c2.normal.is_some() {
-                [
-                    normalize(normals_in[c0.normal.unwrap()]),
-                    normalize(normals_in[c1.normal.unwrap()]),
-                    normalize(normals_in[c2.normal.unwrap()]),
-                ]
-            } else {
-                let sn = smooth_normals.as_ref().expect("smooth normals precomputed");
-                [sn[c0.position], sn[c1.position], sn[c2.position]]
-            };
+            let face_normals: [Vec3; 3] =
+                if c0.normal.is_some() && c1.normal.is_some() && c2.normal.is_some() {
+                    [
+                        normalize(normals_in[c0.normal.unwrap()]),
+                        normalize(normals_in[c1.normal.unwrap()]),
+                        normalize(normals_in[c2.normal.unwrap()]),
+                    ]
+                } else {
+                    let sn = smooth_normals.as_ref().expect("smooth normals precomputed");
+                    [sn[c0.position], sn[c1.position], sn[c2.position]]
+                };
 
             let mut tri_out = [0u32; 3];
             for i in 0..3 {
@@ -246,7 +245,10 @@ pub fn build_render_mesh(mesh: &MeshInput) -> RenderMesh {
                             pack_tangent_component(n[2]),
                             127,
                         );
-                        out_tangents.push(Tangent { tangent_x: tx, tangent_z: tz });
+                        out_tangents.push(Tangent {
+                            tangent_x: tx,
+                            tangent_z: tz,
+                        });
                         let (u, v) = match c.uv {
                             Some(ui) => (uvs_in[ui][0], uvs_in[ui][1]),
                             None => (0.0, 0.0),
@@ -284,8 +286,16 @@ pub fn build_render_mesh(mesh: &MeshInput) -> RenderMesh {
         }
         (lo, hi)
     };
-    let origin = [(lo[0] + hi[0]) / 2.0, (lo[1] + hi[1]) / 2.0, (lo[2] + hi[2]) / 2.0];
-    let extent = [(hi[0] - lo[0]) / 2.0, (hi[1] - lo[1]) / 2.0, (hi[2] - lo[2]) / 2.0];
+    let origin = [
+        (lo[0] + hi[0]) / 2.0,
+        (lo[1] + hi[1]) / 2.0,
+        (lo[2] + hi[2]) / 2.0,
+    ];
+    let extent = [
+        (hi[0] - lo[0]) / 2.0,
+        (hi[1] - lo[1]) / 2.0,
+        (hi[2] - lo[2]) / 2.0,
+    ];
     let radius = (extent[0] * extent[0] + extent[1] * extent[1] + extent[2] * extent[2]).sqrt();
 
     RenderMesh {
@@ -294,7 +304,11 @@ pub fn build_render_mesh(mesh: &MeshInput) -> RenderMesh {
         uvs: out_uvs,
         indices: out_indices,
         sections,
-        bounds: Bounds { origin, box_extent: extent, sphere_radius: radius },
+        bounds: Bounds {
+            origin,
+            box_extent: extent,
+            sphere_radius: radius,
+        },
         material_names: mesh.material_names.clone(),
     }
 }
