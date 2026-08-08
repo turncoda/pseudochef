@@ -285,6 +285,22 @@ fn find_name_property_mut<'a>(
     result
 }
 
+fn find_array_property_mut<'a>(
+    export: &'a mut unreal_asset::Export<PackageIndex>,
+    name: &str,
+) -> Option<&'a mut unreal_asset::properties::array_property::ArrayProperty> {
+    let mut result = None;
+    let props = &mut export.get_normal_export_mut().unwrap().properties;
+    for prop in props {
+        if let unreal_asset::properties::Property::ArrayProperty(arr_prop) = prop
+            && arr_prop.name.get_content(|content| content == name)
+        {
+            result = Some(arr_prop);
+        }
+    }
+    result
+}
+
 fn find_obj_property_mut<'a>(
     export: &'a mut unreal_asset::Export<PackageIndex>,
     name: &str,
@@ -397,7 +413,22 @@ fn add_save_point<C: Read + Seek>(
     idx
 }
 
-fn add_gate<C: Read + Seek>(umap: &mut unreal_asset::Asset<C>, location: DVec3, angles: DVec3) {
+fn add_parent<C: Read + Seek>(umap: &mut unreal_asset::Asset<C>, location: DVec3) -> PackageIndex {
+    let idx = find_export(umap, &[with_name("BP_SwA_StaticMesh_C")]).unwrap();
+    let idx = deep_clone_export(umap, idx);
+    add_actor_to_level(umap, idx);
+
+    let root = get_linked_export_mut(umap, idx, "RootComponent").unwrap();
+    set_location(root, location);
+
+    idx
+}
+
+fn add_gate<C: Read + Seek>(
+    umap: &mut unreal_asset::Asset<C>,
+    location: DVec3,
+    angles: DVec3,
+) -> PackageIndex {
     let idx = find_gate_static_mesh_actor(umap);
     let idx = deep_clone_export(umap, idx);
     add_actor_to_level(umap, idx);
@@ -405,6 +436,8 @@ fn add_gate<C: Read + Seek>(umap: &mut unreal_asset::Asset<C>, location: DVec3, 
     let root = get_linked_export_mut(umap, idx, "RootComponent").unwrap();
     set_location(root, location);
     set_rotation(root, angles);
+
+    idx
 }
 
 fn add_jump_bubble<C: Read + Seek>(umap: &mut unreal_asset::Asset<C>, location: DVec3) {
@@ -547,7 +580,7 @@ fn set_obj_property(
     export: &mut unreal_asset::Export<PackageIndex>,
     object_name: &str,
     idx: PackageIndex,
-) {
+) -> PackageIndex {
     let base_export = export.get_base_export_mut();
     let export_name = base_export.object_name.get_owned_content();
     if idx.index != 0 {
@@ -562,7 +595,9 @@ fn set_obj_property(
             object_name, export_name
         )
     });
+    let old_idx = prop.value;
     prop.value = idx;
+    old_idx
 }
 
 fn set_rotation(export: &mut unreal_asset::Export<PackageIndex>, angles: DVec3) {
@@ -720,10 +755,18 @@ fn main() {
 
     let mut num_world_brushes = 0;
     let mut num_hazard_brushes = 0;
-    let mut player_starts = HashMap::<String, PackageIndex>::new();
-    let mut save_points = Vec::<(PackageIndex, String)>::new();
-    let mut safe_zones = Vec::<(PackageIndex, Option<String>)>::new();
-    let mut respawn_anchors = HashMap::<String, DVec3>::new();
+
+    let mut parents: Vec<(PackageIndex, String)> = Vec::new();
+    let mut save_points: Vec<(PackageIndex, String)> = Vec::new();
+    let mut parent_to_marker: Vec<(PackageIndex, String)> = Vec::new();
+    // TODO remove Option<>
+    let mut safe_zones: Vec<(PackageIndex, Option<String>)> = Vec::new();
+
+    let mut markers: HashMap<String, DVec3> = HashMap::new();
+    let mut respawn_anchors: HashMap<String, DVec3> = HashMap::new();
+    let mut player_starts: HashMap<String, PackageIndex> = HashMap::new();
+    let mut tagged_static_mesh_actors: HashMap<String, PackageIndex> = HashMap::new();
+
     let start = Instant::now();
     for ent in ast.0 {
         let props: HashMap<String, String> = ent
@@ -803,7 +846,26 @@ fn main() {
             "prop_gate" => {
                 let origin = tb2ue::point(tb::unwrap_vec3(props.get("origin")));
                 let angles = tb2ue::angles(tb::unwrap_vec3(props.get("angles")));
-                add_gate(&mut umap, origin, angles);
+                let idx = add_gate(&mut umap, origin, angles);
+                if let Some(tag) = props.get("tag") {
+                    tagged_static_mesh_actors.insert(tag.to_string(), idx);
+                }
+            }
+            "info_parent" => {
+                let origin = tb2ue::point(tb::unwrap_vec3(props.get("origin")));
+                let idx = add_parent(&mut umap, origin);
+                if let Some(child) = props.get("child") {
+                    parents.push((idx, child.clone()));
+                }
+                if let Some(dst) = props.get("destination") {
+                    parent_to_marker.push((idx, dst.clone()));
+                }
+            }
+            "info_marker" => {
+                let origin = tb2ue::point(tb::unwrap_vec3(props.get("origin")));
+                if let Some(tag) = props.get("tag") {
+                    markers.insert(tag.clone(), origin);
+                }
             }
             _ => {}
         };
@@ -855,6 +917,80 @@ fn main() {
         );
 
         set_vec_property(umap.get_export_mut(idx).unwrap(), "offset", offset);
+    }
+
+    // Link parents to childs
+    for (parent_idx, child_tag) in parents {
+        let parent_root = get_linked_export(&umap, parent_idx, "RootComponent").unwrap();
+        let parent_location = get_location(&parent_root);
+
+        let Some(child_idx) = tagged_static_mesh_actors.get(&child_tag) else {
+            println!("WARNING: couldn't find child with tag: {}", child_tag);
+            continue;
+        };
+
+        let child_root = get_linked_export(&umap, *child_idx, "RootComponent").unwrap();
+        let child_location = get_location(&child_root);
+
+        let relative_location = child_location - parent_location;
+
+        let donor_static_mesh_component =
+            get_linked_export_mut(&mut umap, *child_idx, "StaticMeshComponent").unwrap();
+        let donor_static_mesh_import_idx = set_obj_property(
+            donor_static_mesh_component,
+            "StaticMesh",
+            PackageIndex::new(0),
+        );
+        // TODO double check I did this right
+        deep_delete_export(&mut umap, *child_idx);
+
+        let recipient_static_mesh_component =
+            get_linked_export_mut(&mut umap, parent_idx, "StaticMesh").unwrap();
+        set_obj_property(
+            recipient_static_mesh_component,
+            "StaticMesh",
+            donor_static_mesh_import_idx,
+        );
+        set_location(recipient_static_mesh_component, relative_location);
+        // TODO set_rotation, set material overrides
+    }
+
+    // Link parents to markers
+    for (parent_idx, marker_tag) in parent_to_marker {
+        let parent_root = get_linked_export(&umap, parent_idx, "RootComponent").unwrap();
+        let parent_location = get_location(&parent_root);
+
+        let Some(marker_location) = markers.get(&marker_tag) else {
+            println!("WARNING: couldn't find marker with tag: {}", marker_tag);
+            continue;
+        };
+
+        let relative_location = marker_location - parent_location;
+
+        let parent_export = umap.get_export_mut(parent_idx).unwrap();
+        let state_positions = find_array_property_mut(parent_export, "statePositions").unwrap();
+        // TODO this is very hardcoded and not flexible (doesn't support multiple positions, assumes
+        // there is a second state position in the template actor) and this deep nesting sucks and
+        // the error handling sucks
+        if let unreal_asset::properties::Property::StructProperty(struct_prop) =
+            &mut state_positions.value[1]
+        {
+            for prop in &mut struct_prop.value {
+                if let unreal_asset::properties::Property::StructProperty(struct_prop) = prop
+                    && struct_prop
+                        .name
+                        .get_content(|content| content == "Translation")
+                {
+                    for prop in &mut struct_prop.value {
+                        if let unreal_asset::properties::Property::VectorProperty(vec_prop) = prop {
+                            vec_prop.value.x.0 = relative_location.x;
+                            vec_prop.value.y.0 = relative_location.y;
+                            vec_prop.value.z.0 = relative_location.z;
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // rename level export (for swag only; seemingly inconsequential)
