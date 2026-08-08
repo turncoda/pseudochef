@@ -424,6 +424,22 @@ fn add_parent<C: Read + Seek>(umap: &mut unreal_asset::Asset<C>, location: DVec3
     idx
 }
 
+fn add_switch<C: Read + Seek>(
+    umap: &mut unreal_asset::Asset<C>,
+    location: DVec3,
+    angles: DVec3,
+) -> PackageIndex {
+    let idx = find_export(umap, &[with_name("BP_HitSwitch_C")]).unwrap();
+    let idx = deep_clone_export(umap, idx);
+    add_actor_to_level(umap, idx);
+
+    let root = get_linked_export_mut(umap, idx, "RootComponent").unwrap();
+    set_location(root, location);
+    set_rotation(root, angles);
+
+    idx
+}
+
 fn add_gate<C: Read + Seek>(
     umap: &mut unreal_asset::Asset<C>,
     location: DVec3,
@@ -756,7 +772,8 @@ fn main() {
     let mut num_world_brushes = 0;
     let mut num_hazard_brushes = 0;
 
-    let mut parents: Vec<(PackageIndex, String)> = Vec::new();
+    let mut parent_to_child: Vec<(PackageIndex, String)> = Vec::new();
+    let mut switches: Vec<(PackageIndex, String)> = Vec::new();
     let mut save_points: Vec<(PackageIndex, String)> = Vec::new();
     let mut parent_to_marker: Vec<(PackageIndex, String)> = Vec::new();
     // TODO remove Option<>
@@ -764,6 +781,7 @@ fn main() {
 
     let mut markers: HashMap<String, DVec3> = HashMap::new();
     let mut respawn_anchors: HashMap<String, DVec3> = HashMap::new();
+    let mut parents: HashMap<String, PackageIndex> = HashMap::new();
     let mut player_starts: HashMap<String, PackageIndex> = HashMap::new();
     let mut tagged_static_mesh_actors: HashMap<String, PackageIndex> = HashMap::new();
 
@@ -855,16 +873,27 @@ fn main() {
                 let origin = tb2ue::point(tb::unwrap_vec3(props.get("origin")));
                 let idx = add_parent(&mut umap, origin);
                 if let Some(child) = props.get("child") {
-                    parents.push((idx, child.clone()));
+                    parent_to_child.push((idx, child.clone()));
                 }
                 if let Some(dst) = props.get("destination") {
                     parent_to_marker.push((idx, dst.clone()));
+                }
+                if let Some(tag) = props.get("tag") {
+                    parents.insert(tag.clone(), idx);
                 }
             }
             "info_marker" => {
                 let origin = tb2ue::point(tb::unwrap_vec3(props.get("origin")));
                 if let Some(tag) = props.get("tag") {
                     markers.insert(tag.clone(), origin);
+                }
+            }
+            "func_switch" => {
+                let origin = tb2ue::point(tb::unwrap_vec3(props.get("origin")));
+                let angles = tb2ue::angles(tb::unwrap_vec3(props.get("angles")));
+                let idx = add_switch(&mut umap, origin, angles);
+                if let Some(target) = props.get("target") {
+                    switches.push((idx, target.clone()));
                 }
             }
             _ => {}
@@ -920,7 +949,7 @@ fn main() {
     }
 
     // Link parents to childs
-    for (parent_idx, child_tag) in parents {
+    for (parent_idx, child_tag) in parent_to_child {
         let parent_root = get_linked_export(&umap, parent_idx, "RootComponent").unwrap();
         let parent_location = get_location(&parent_root);
 
@@ -991,6 +1020,25 @@ fn main() {
                 }
             }
         }
+    }
+
+    // Link switches to parents
+    for (switch_idx, parent_tag) in switches {
+        let Some(parent_idx) = parents.get(&parent_tag) else {
+            println!("WARNING: couldn't find parent with tag: {}", parent_tag);
+            continue;
+        };
+        println!("func_switch @{} -> info_parent @{}", switch_idx, parent_idx);
+        
+        let switch_export = umap.get_export_mut(switch_idx).unwrap();
+        let associated_actors = find_array_property_mut(switch_export, "associatedActors").unwrap();
+        let mut prop = associated_actors.value[0].clone();
+        if let unreal_asset::properties::Property::ObjectProperty(obj_prop) = &mut prop {
+            obj_prop.value = *parent_idx;
+        }
+        associated_actors.value.clear();
+        associated_actors.value.push(prop);
+        switch_export.get_base_export_mut().create_before_serialization_dependencies.push(*parent_idx);
     }
 
     // rename level export (for swag only; seemingly inconsequential)
