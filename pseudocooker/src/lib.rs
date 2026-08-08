@@ -1,5 +1,6 @@
 //! `pseudocooker` -- UE5.1 static mesh cooker
 //!
+//! Input:
 //! Takes raw mesh data as input and outputs cooked UE5.1-compliant static mesh uasset.
 //!
 //! Overview:
@@ -22,7 +23,6 @@ pub mod physxpc;
 pub mod staticmesh;
 
 pub use mesh::{Bounds, Corner, Face, MeshInput, RenderMesh, Section, Tangent, Vec2, Vec3};
-pub use package::CookOptions;
 
 pub struct CookedAsset {
     pub uasset: Vec<u8>,
@@ -45,6 +45,6 @@ impl CookedAsset {
 /// Returns bytes that would be written to the .uasset, .uexp, and .ubulk files.
 pub fn cook(mesh_input: &MeshInput, asset_name: &str) -> CookedAsset {
     let render_mesh = mesh::build_render_mesh(mesh_input);
-    let (uasset, uexp) = package::cook_package(asset_name, &render_mesh, &CookOptions::default());
+    let (uasset, uexp) = package::cook_package(asset_name, &render_mesh);
     CookedAsset { uasset, uexp }
 }

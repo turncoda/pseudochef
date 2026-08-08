@@ -28,14 +28,6 @@ const PACKAGE_FILE_TAG: u32 = 0x9E2A83C1;
 const PKG_FILTER_EDITOR_ONLY: u32 = 0x80000000;
 const PKG_COOKED: u32 = 0x00000200;
 
-/// Optional GUID override (randomized by default)
-#[derive(Default, Clone)]
-pub struct CookOptions {
-    pub body_setup_guid: Option<String>,
-    pub lighting_guid: Option<String>,
-    pub package_guid: Option<String>,
-}
-
 fn new_guid_hex32() -> String {
     use rand::RngCore;
     let mut bytes = [0u8; 16];
@@ -104,14 +96,14 @@ fn material_per_triangle(mesh: &RenderMesh) -> Vec<u16> {
 /// `mesh`: as returned by `mesh::build_render_mesh`
 ///
 /// Returns (uasset_bytes, uexp_bytes).
-pub fn cook_package(package_short_name: &str, mesh: &RenderMesh, options: &CookOptions) -> (Vec<u8>, Vec<u8>) {
+pub fn cook_package(package_short_name: &str, mesh: &RenderMesh) -> (Vec<u8>, Vec<u8>) {
     let mut table = NameTable::new();
 
     // --- export bodies ---
     // This interns all "content" FNames first, matching the real name-table ordering:
     // property/type names, then import/export/package names
-    let body_setup_guid = options.body_setup_guid.clone().unwrap_or_else(new_guid_hex32);
-    let lighting_guid = options.lighting_guid.clone().unwrap_or_else(new_guid_hex32);
+    let body_setup_guid = new_guid_hex32();
+    let lighting_guid = new_guid_hex32();
 
     let (body_setup_bytes, body_setup_patches) = bodysetup::write_body_setup(
         &mut table,
@@ -222,7 +214,7 @@ pub fn cook_package(package_short_name: &str, mesh: &RenderMesh, options: &CookO
     header.i32(0); // SoftPackageReferencesOffset
     header.i32(0); // SearchableNamesOffset
     header.i32(0); // ThumbnailTableOffset
-    let package_guid = options.package_guid.clone().unwrap_or_else(new_guid_hex32);
+    let package_guid = new_guid_hex32();
     header.fguid(&package_guid); // deprecated package Guid, still written
     // PersistentGuid omitted (PKG_FilterEditorOnly set)
     header.i32(1); // GenerationCount
