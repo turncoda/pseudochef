@@ -181,26 +181,6 @@ fn find_vec_property<'a>(
     result
 }
 
-fn find_rot_property_mut<'a>(
-    export: &'a mut unreal_asset::Export<PackageIndex>,
-    name: &str,
-) -> Option<&'a mut unreal_asset::properties::vector_property::RotatorProperty> {
-    let mut result = None;
-    let props = &mut export.get_normal_export_mut().unwrap().properties;
-    for prop in props {
-        if let unreal_asset::properties::Property::StructProperty(struct_prop) = prop
-            && struct_prop.name.get_content(|content| content == name)
-        {
-            for prop in &mut struct_prop.value {
-                if let unreal_asset::properties::Property::RotatorProperty(rot_prop) = prop {
-                    result = Some(rot_prop);
-                }
-            }
-        }
-    }
-    result
-}
-
 fn find_vec_property_mut<'a>(
     export: &'a mut unreal_asset::Export<PackageIndex>,
     name: &str,
@@ -214,6 +194,46 @@ fn find_vec_property_mut<'a>(
             for prop in &mut struct_prop.value {
                 if let unreal_asset::properties::Property::VectorProperty(vec_prop) = prop {
                     result = Some(vec_prop);
+                }
+            }
+        }
+    }
+    result
+}
+
+fn find_rot_property<'a>(
+    export: &'a unreal_asset::Export<PackageIndex>,
+    name: &str,
+) -> Option<&'a unreal_asset::properties::vector_property::RotatorProperty> {
+    let mut result = None;
+    let props = &export.get_normal_export().unwrap().properties;
+    for prop in props {
+        if let unreal_asset::properties::Property::StructProperty(struct_prop) = prop
+            && struct_prop.name.get_content(|content| content == name)
+        {
+            for prop in &struct_prop.value {
+                if let unreal_asset::properties::Property::RotatorProperty(rot_prop) = prop {
+                    result = Some(rot_prop);
+                }
+            }
+        }
+    }
+    result
+}
+
+fn find_rot_property_mut<'a>(
+    export: &'a mut unreal_asset::Export<PackageIndex>,
+    name: &str,
+) -> Option<&'a mut unreal_asset::properties::vector_property::RotatorProperty> {
+    let mut result = None;
+    let props = &mut export.get_normal_export_mut().unwrap().properties;
+    for prop in props {
+        if let unreal_asset::properties::Property::StructProperty(struct_prop) = prop
+            && struct_prop.name.get_content(|content| content == name)
+        {
+            for prop in &mut struct_prop.value {
+                if let unreal_asset::properties::Property::RotatorProperty(rot_prop) = prop {
+                    result = Some(rot_prop);
                 }
             }
         }
@@ -616,10 +636,6 @@ fn set_obj_property(
     old_idx
 }
 
-fn set_rotation(export: &mut unreal_asset::Export<PackageIndex>, angles: DVec3) {
-    set_rot_property(export, "RelativeRotation", angles);
-}
-
 fn set_extents(export: &mut unreal_asset::Export<PackageIndex>, location: DVec3) {
     let prop =
         find_vec_property_mut(export, "BoxExtent").expect("couldn't find BoxExtent property");
@@ -634,6 +650,11 @@ fn set_rot_property(export: &mut unreal_asset::Export<PackageIndex>, name: &str,
     prop.value.x.0 = value.x;
     prop.value.y.0 = value.y;
     prop.value.z.0 = value.z;
+}
+
+fn get_rot_property(export: &unreal_asset::Export<PackageIndex>, name: &str) -> DVec3 {
+    let prop = find_rot_property(export, name).expect(&format!("couldn't find property: {}", name));
+    DVec3::new(prop.value.x.0, prop.value.y.0, prop.value.z.0)
 }
 
 fn set_vec_property(export: &mut unreal_asset::Export<PackageIndex>, name: &str, value: DVec3) {
@@ -655,6 +676,14 @@ fn set_location(export: &mut unreal_asset::Export<PackageIndex>, location: DVec3
 
 fn get_location(export: &unreal_asset::Export<PackageIndex>) -> DVec3 {
     get_vec_property(export, "RelativeLocation")
+}
+
+fn set_rotation(export: &mut unreal_asset::Export<PackageIndex>, angles: DVec3) {
+    set_rot_property(export, "RelativeRotation", angles);
+}
+
+fn get_rotation(export: &unreal_asset::Export<PackageIndex>) -> DVec3 {
+    get_rot_property(export, "RelativeRotation")
 }
 
 fn find_gate_static_mesh_actor<C: Read + Seek>(umap: &unreal_asset::Asset<C>) -> PackageIndex {
@@ -960,6 +989,7 @@ fn main() {
 
         let child_root = get_linked_export(&umap, *child_idx, "RootComponent").unwrap();
         let child_location = get_location(&child_root);
+        let child_rotation = get_rotation(&child_root);
 
         let relative_location = child_location - parent_location;
 
@@ -970,6 +1000,9 @@ fn main() {
             "StaticMesh",
             PackageIndex::new(0),
         );
+        let donor_override_materials =
+            find_array_property_mut(donor_static_mesh_component, "OverrideMaterials")
+                .map(|v| v.clone());
         // TODO double check I did this right
         deep_delete_export(&mut umap, *child_idx);
 
@@ -981,7 +1014,14 @@ fn main() {
             donor_static_mesh_import_idx,
         );
         set_location(recipient_static_mesh_component, relative_location);
-        // TODO set_rotation, set material overrides
+        set_rotation(recipient_static_mesh_component, child_rotation);
+        let recipient_override_materials =
+            find_array_property_mut(recipient_static_mesh_component, "OverrideMaterials");
+        if let Some(recipient_override_materials) = recipient_override_materials
+            && let Some(donor_override_materials) = donor_override_materials
+        {
+            recipient_override_materials.value = donor_override_materials.value;
+        }
     }
 
     // Link parents to markers
@@ -1005,16 +1045,20 @@ fn main() {
             &mut state_positions.value[1]
         {
             for prop in &mut struct_prop.value {
-                if let unreal_asset::properties::Property::StructProperty(struct_prop) = prop
-                    && struct_prop
+                if let unreal_asset::properties::Property::StructProperty(struct_prop) = prop {
+                    // TODO set rotation as well
+                    if struct_prop
                         .name
                         .get_content(|content| content == "Translation")
-                {
-                    for prop in &mut struct_prop.value {
-                        if let unreal_asset::properties::Property::VectorProperty(vec_prop) = prop {
-                            vec_prop.value.x.0 = relative_location.x;
-                            vec_prop.value.y.0 = relative_location.y;
-                            vec_prop.value.z.0 = relative_location.z;
+                    {
+                        for prop in &mut struct_prop.value {
+                            if let unreal_asset::properties::Property::VectorProperty(vec_prop) =
+                                prop
+                            {
+                                vec_prop.value.x.0 = relative_location.x;
+                                vec_prop.value.y.0 = relative_location.y;
+                                vec_prop.value.z.0 = relative_location.z;
+                            }
                         }
                     }
                 }
@@ -1029,7 +1073,7 @@ fn main() {
             continue;
         };
         println!("func_switch @{} -> info_parent @{}", switch_idx, parent_idx);
-        
+
         let switch_export = umap.get_export_mut(switch_idx).unwrap();
         let associated_actors = find_array_property_mut(switch_export, "associatedActors").unwrap();
         let mut prop = associated_actors.value[0].clone();
@@ -1038,7 +1082,10 @@ fn main() {
         }
         associated_actors.value.clear();
         associated_actors.value.push(prop);
-        switch_export.get_base_export_mut().create_before_serialization_dependencies.push(*parent_idx);
+        switch_export
+            .get_base_export_mut()
+            .create_before_serialization_dependencies
+            .push(*parent_idx);
     }
 
     // rename level export (for swag only; seemingly inconsequential)
