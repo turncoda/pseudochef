@@ -3,9 +3,42 @@
 // Above each entity definition, a measurement of the actor's relevant
 // collision is recorded in UE units.
 
-@baseclass size(-8 -8 0, 8 8 16) = BottomAnchor []
-
-@SolidClass = worldspawn : "World entity" []
+@SolidClass = worldspawn : "World entity" [
+    upgrades(flags) = [
+        1 : "Dream Breaker" : 0
+        2 : "Sun Greaves" : 0
+        4 : "Slide" : 0
+        8 : "Sunsetter" : 0
+        16 : "Cling Gem" : 0
+        32 : "Ascendant Light" : 0
+        64 : "Soul Cutter" : 0
+        128 : "Haste (debug)" : 0
+        256 : "Indignation" : 0
+        512 : "Solar Wind" : 0
+        1024 : "Defender (debug)" : 0
+        2048 : "Strikebreak" : 0
+        4096 : "(unused)" : 0 // Memento
+        8192 : "(unused)" : 0
+        16384 : "(unused)" : 0
+        32768 : "(unused)" : 0
+        65536 : "(unused)" : 0
+        131072 : "(unused)" : 0
+        262144 : "(unused)" : 0
+        524288 : "(unused)" : 0
+        1048576 : "(unused)" : 0 // Heliiacal Power
+        2097152 : "(unused)" : 0 // Martial Prowess
+        4194304 : "(unused)" : 0 // Clear Mind
+        8388608 : "(unused)" : 0 // Empathy
+        16777216 : "(unused)" : 0 // Good Graces
+        33554432 : "(unused)" : 0 // Aerial Finesse
+        67108864 : "(unused)" : 0 // Pilgrimage
+        134217728 : "(unused)" : 0 // Heavenly Body
+        268435456 : "(unused)" : 0
+        536870912 : "(unused)" : 0
+        1073741824 : "(unused)" : 0
+        2147483648 : "(unused)" : 0
+    ]
+]
 
 // === BP_PlayerGoatMain ======================================================
 //   * Capsule half height: 65
@@ -69,16 +102,34 @@ Upgrade pickup.
     upgrade(choices) : "Upgrade" : "attack" : "" =
     [
         "attack" : "Dream Breaker"
-        "wallRide" : "Cling Gem"
         "airKick" : "Sun Greaves"
         "slide" : "Slide"
-        "Light" : "Ascendant Light"
-        "SlideJump" : "Solar Wind"
         "plunge" : "Sunsetter"
+        "wallRide" : "Cling Gem"
+        "light" : "Ascendant Light"
         "projectile" : "Soul Cutter"
+        "sprint" : "Haste (debug)"
         "powerBoost" : "Indignation"
+        "SlideJump" : "Solar Wind"
+        "guard" : "Defender (debug)"
         "chargeAttack" : "Strikebreak"
-        "extraKick" : "Heliacal Power"
+//      "map" : "Memento"
+        "extraKick" : "Heliiacal Power"
+        "damageBoost" : "Martial Prowess"
+        "magicPiece" : "Clear Mind"
+        "magicHaste" : "Empathy"
+        "HealBoost" : "Good Graces"
+        "airRecovery" : "Aerial Finesse"
+        "mobileHeal" : "Pilgrimage"
+        "healthPiece" : "Heavenly Body"
+//      "outfitPro" : "Professionalism"
+//      "outfitShoujo" : "a Guardian"
+//      "outfitKnight" : "Chivalry"
+//      "outfitPast" : "a Bleeding Heart"
+//      "outfitJam" : "Nostalgia"
+//      "outfitFaith" : "Devotion"
+//      "outfitClassy" : "Class"
+//      "outfitSweater" : "Sweater"
     ]
     quick_pickup(boolean) : : 1 : "Skip game-pausing upgrade pickup dialog."
 ]
@@ -112,7 +163,7 @@ Due to UE collision limitations, arbitrary brush shapes are not supported. The a
 // === Respawn anchor (custom) ================================================
 //   * Part of another custom actor: BP_SafeZone
 // ============================================================================
-@PointClass base(BottomAnchor) = info_respawn_anchor : "
+@PointClass = info_respawn_anchor : "
 
 Used to tweak respawn location associated with a safe_zone.
 
@@ -128,7 +179,7 @@ Used to tweak respawn location associated with a safe_zone.
 //   * Origin: Center-bottom
 //   * Dimensions: 20, 400, 600
 // ============================================================================
-@PointClass base(BottomAnchor) model({"path": "gate.obj"}) = prop_gate : "
+@PointClass model("gate.obj") = prop_gate : "
 
 A fixed-size gate. Not from the base game.
 
@@ -144,14 +195,14 @@ Can be designated as 'child' to an info_parent, so as to be switch-activated.
 
 @PointClass = info_parent : "
 
-A container for 'child' (can be a prop_gate or func_movable).
+A container for 'child' (can be a prop_gate or func_child).
 
 Target this with a func_switch. On switch activation, moves to the info_marker specified by 'destination', carrying 'child' along with it (maintaining its relative transform).
 
 "
 [
     destination(target_destination) : "info_marker"
-    child(target_destination) : "prop_gate/func_movable"
+    child(target_destination) : "prop_gate/func_child"
     tag(target_source) : "target from a func_switch"
 ]
 
@@ -165,7 +216,7 @@ Marks a target location and orientation for an info_parent.
     tag(target_source) : "target from an info_parent"
 ]
 
-@SolidClass = func_movable : "
+@SolidClass = func_child : "
 
 Can be designated as 'child' to an info_parent, so as to be switch-activated.
 
@@ -174,11 +225,12 @@ Can be designated as 'child' to an info_parent, so as to be switch-activated.
     tag(target_source) : "target with info_parent"
 ]
 
-@PointClass base(BottomAnchor) = func_switch : "
+@PointClass model("switch_dummy.obj") = func_switch : "
 
 Triggers an info_parent to move when hit.
 
 "
 [
     target(target_destination) : "info_parent"
+    angles(angle) : "Pitch Yaw Roll (Y Z X)" : "0 0 0"
 ]
