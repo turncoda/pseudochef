@@ -1,8 +1,9 @@
-use glam::{DVec3, DQuat};
+use crate::{tb, ue};
+use glam::{DQuat, DVec3};
 
 const TB_TO_UNREAL_SCALE: f32 = 3.125; // TB 32 => UE 100
 
-pub fn point(mut a: DVec3) -> DVec3 {
+pub(crate) fn point(mut a: DVec3) -> DVec3 {
     a.y = -a.y;
     a *= TB_TO_UNREAL_SCALE as f64;
     a
@@ -36,36 +37,47 @@ fn mirror_xz(brush: &mut shalrath::repr::Brush) {
     }
 }
 
-pub fn brush(mut b: shalrath::repr::Brush) -> shalrath::repr::Brush {
+pub(crate) fn brush(mut b: shalrath::repr::Brush) -> shalrath::repr::Brush {
     mirror_xz(&mut b);
     scale(&mut b, TB_TO_UNREAL_SCALE);
     b
 }
 
-pub fn angles(mut a: DVec3) -> DVec3 {
-    // From experiments: when going from TB to UE,
-    // pitch and yaw are negated, while roll remains the same.
-    // I'm not sure of the mathematical reasoning here.
-    a.x *= -1.0; // pitch
-    a.y *= -1.0; // yaw
-    a
-
-    // To go from (pitch, yaw, roll) to true right-handed Euler rotation, pitch should be inverted.
+/// Right-handed Eulerian angles, applied in ZXY order.
+struct EulerRotZXY {
+    pub z: f64,
+    pub x: f64,
+    pub y: f64,
 }
 
-pub fn quat(a: DVec3) -> DQuat {
-    // UE is left-handed with the +Z-axis pointing up and +X pointing
-    // forward. Therefore:
-    //
-    //     Roll        = X
-    //     Pitch       = Y
-    //     Yaw         = Z
-    //
-    let (pitch, yaw, roll) = a.into();
-    // The following angle negations were determined empirically.
-    let x = -roll;
-    let y = pitch;
-    let z = -yaw;
-    // The following rotation order was determined empirically.
-    DQuat::from_euler(glam::EulerRot::ZXY, z, x, y)
+fn euler(pyr: tb::PitchYawRoll) -> EulerRotZXY {
+    let tb::PitchYawRoll { pitch, yaw, roll } = pyr;
+
+    // Convert pitch-yaw-roll to TB-space (right-handed, +Z up, +X forward) Euler rotation angles.
+    // TB defines pitch as the negative of the right-handed Y-axis rotation angle.
+    let x = roll;
+    let y = -pitch;
+    let z = yaw;
+
+    EulerRotZXY { z, x, y }
+}
+
+pub(crate) fn rot(pyr: tb::PitchYawRoll) -> ue::PitchYawRoll {
+    let EulerRotZXY { z, x, y } = euler(pyr);
+
+    // Re-order into pitch, yaw, roll (YZX) order because that's how UE stores its angles.
+    // ... oh, and UE uses left-hand rule for Z but right-hand rule for X and Y. Because fuck you.
+    let pitch = y;
+    let yaw = -z;
+    let roll = x;
+
+    ue::PitchYawRoll { pitch, yaw, roll }
+}
+
+pub(crate) fn quat(pyr: tb::PitchYawRoll) -> DQuat {
+    let EulerRotZXY { z, x, y } = euler(pyr);
+
+    // Yaw-roll-pitch (ZXY) was determined empirically to be the rotation order used by UE.
+    // Also, the angles are negated to conform to UE's left-handed coordinate system.
+    DQuat::from_euler(glam::EulerRot::ZXY, -z, -x, -y)
 }

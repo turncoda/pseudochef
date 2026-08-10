@@ -1,4 +1,4 @@
-use glam::{DVec3, DQuat};
+use glam::{DQuat, DVec3};
 use shalrath::parser::repr::parse_map;
 use std::collections::HashMap;
 use std::fs::{File, read_to_string};
@@ -19,8 +19,8 @@ mod upgrade_data;
 use upgrade_data::{get_upgrade_data, set_upgrade_data};
 
 mod tb;
-
 mod tb2ue;
+mod ue;
 
 // For debugging purposes; may not be called
 #[allow(dead_code)]
@@ -452,7 +452,7 @@ fn add_parent<C: Read + Seek>(umap: &mut unreal_asset::Asset<C>, location: DVec3
 fn add_switch<C: Read + Seek>(
     umap: &mut unreal_asset::Asset<C>,
     location: DVec3,
-    angles: DVec3,
+    rot: ue::PitchYawRoll,
 ) -> PackageIndex {
     let idx = find_export(umap, &[with_name("BP_HitSwitch_C")]).unwrap();
     let idx = deep_clone_export(umap, idx);
@@ -460,7 +460,7 @@ fn add_switch<C: Read + Seek>(
 
     let root = get_linked_export_mut(umap, idx, "RootComponent").unwrap();
     set_location(root, location);
-    set_rotation(root, angles);
+    set_rotation(root, rot);
 
     idx
 }
@@ -468,7 +468,7 @@ fn add_switch<C: Read + Seek>(
 fn add_gate<C: Read + Seek>(
     umap: &mut unreal_asset::Asset<C>,
     location: DVec3,
-    angles: DVec3,
+    rot: ue::PitchYawRoll,
 ) -> PackageIndex {
     let idx = find_gate_static_mesh_actor(umap);
     let idx = deep_clone_export(umap, idx);
@@ -476,7 +476,7 @@ fn add_gate<C: Read + Seek>(
 
     let root = get_linked_export_mut(umap, idx, "RootComponent").unwrap();
     set_location(root, location);
-    set_rotation(root, angles);
+    set_rotation(root, rot);
 
     idx
 }
@@ -519,7 +519,7 @@ fn add_upgrade<C: Read + Seek>(
 fn add_player_start<C: Read + Seek>(
     umap: &mut unreal_asset::Asset<C>,
     location: DVec3,
-    angles: DVec3,
+    rot: ue::PitchYawRoll,
     tag: &str,
 ) -> PackageIndex {
     let idx = find_export(umap, &[with_name("PlayerStart")]).unwrap();
@@ -532,7 +532,7 @@ fn add_player_start<C: Read + Seek>(
 
     let root = get_linked_export_mut(umap, idx, "RootComponent").unwrap();
     set_location(root, location);
-    set_rotation(root, angles);
+    set_rotation(root, rot);
 
     idx
 }
@@ -649,17 +649,25 @@ fn set_extents(export: &mut unreal_asset::Export<PackageIndex>, location: DVec3)
     prop.value.z.0 = location.z;
 }
 
-fn set_rot_property(export: &mut unreal_asset::Export<PackageIndex>, name: &str, value: DVec3) {
+fn set_rot_property(
+    export: &mut unreal_asset::Export<PackageIndex>,
+    name: &str,
+    rot: ue::PitchYawRoll,
+) {
     let prop =
         find_rot_property_mut(export, name).expect(&format!("couldn't find property: {}", name));
-    prop.value.x.0 = value.x;
-    prop.value.y.0 = value.y;
-    prop.value.z.0 = value.z;
+    prop.value.x.0 = rot.pitch;
+    prop.value.y.0 = rot.yaw;
+    prop.value.z.0 = rot.roll;
 }
 
-fn get_rot_property(export: &unreal_asset::Export<PackageIndex>, name: &str) -> DVec3 {
+fn get_rot_property(export: &unreal_asset::Export<PackageIndex>, name: &str) -> ue::PitchYawRoll {
     let prop = find_rot_property(export, name).expect(&format!("couldn't find property: {}", name));
-    DVec3::new(prop.value.x.0, prop.value.y.0, prop.value.z.0)
+    ue::PitchYawRoll {
+        pitch: prop.value.x.0,
+        yaw: prop.value.y.0,
+        roll: prop.value.z.0,
+    }
 }
 
 fn set_vec_property(export: &mut unreal_asset::Export<PackageIndex>, name: &str, value: DVec3) {
@@ -683,11 +691,11 @@ fn get_location(export: &unreal_asset::Export<PackageIndex>) -> DVec3 {
     get_vec_property(export, "RelativeLocation")
 }
 
-fn set_rotation(export: &mut unreal_asset::Export<PackageIndex>, angles: DVec3) {
-    set_rot_property(export, "RelativeRotation", angles);
+fn set_rotation(export: &mut unreal_asset::Export<PackageIndex>, rot: ue::PitchYawRoll) {
+    set_rot_property(export, "RelativeRotation", rot);
 }
 
-fn get_rotation(export: &unreal_asset::Export<PackageIndex>) -> DVec3 {
+fn get_rotation(export: &unreal_asset::Export<PackageIndex>) -> ue::PitchYawRoll {
     get_rot_property(export, "RelativeRotation")
 }
 
@@ -874,9 +882,9 @@ fn main() {
             }
             "info_player_start" => {
                 let origin = tb2ue::point(tb::unwrap_vec3(props.get("origin")));
-                let angles = tb2ue::angles(tb::unwrap_angle(props.get("angle")));
+                let rot = tb2ue::rot(tb::unwrap_yaw(props.get("angle")));
                 let tag = tb::unwrap_string_or(props.get("tag"), "gameStart");
-                let idx = add_player_start(&mut umap, origin, angles, tag);
+                let idx = add_player_start(&mut umap, origin, rot, tag);
                 player_starts.insert(tag.to_string(), idx);
             }
             "item_upgrade" => {
@@ -897,8 +905,8 @@ fn main() {
             }
             "prop_gate" => {
                 let origin = tb2ue::point(tb::unwrap_vec3(props.get("origin")));
-                let angles = tb2ue::angles(tb::unwrap_vec3(props.get("angles")));
-                let idx = add_gate(&mut umap, origin, angles);
+                let rot = tb2ue::rot(tb::unwrap_rot(props.get("angles")));
+                let idx = add_gate(&mut umap, origin, rot);
                 if let Some(tag) = props.get("tag") {
                     tagged_static_mesh_actors.insert(tag.to_string(), idx);
                 }
@@ -918,15 +926,15 @@ fn main() {
             }
             "info_marker" => {
                 let origin = tb2ue::point(tb::unwrap_vec3(props.get("origin")));
-                let quat = tb2ue::quat(tb::unwrap_vec3(props.get("angles")));
+                let quat = tb2ue::quat(tb::unwrap_rot(props.get("angles")));
                 if let Some(tag) = props.get("tag") {
                     markers.insert(tag.clone(), Marker { origin, quat });
                 }
             }
             "func_switch" => {
                 let origin = tb2ue::point(tb::unwrap_vec3(props.get("origin")));
-                let angles = tb2ue::angles(tb::unwrap_vec3(props.get("angles")));
-                let idx = add_switch(&mut umap, origin, angles);
+                let rot = tb2ue::rot(tb::unwrap_rot(props.get("angles")));
+                let idx = add_switch(&mut umap, origin, rot);
                 if let Some(target) = props.get("target") {
                     switches.push((idx, target.clone()));
                 }

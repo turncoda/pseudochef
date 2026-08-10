@@ -1,5 +1,12 @@
-pub struct EulerRot {
-    pub x: f64,
-    pub y: f64,
-    pub z: f64,
+/// In relation to right-handed Eulerian angles, UE defines its rotations as follows:
+///
+///     Pitch =  Y
+///     Yaw   = -Z
+///     Roll  =  X
+///
+#[derive(Default)]
+pub(crate) struct PitchYawRoll {
+    pub pitch: f64,
+    pub yaw: f64,
+    pub roll: f64,
 }
