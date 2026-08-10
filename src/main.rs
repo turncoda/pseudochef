@@ -1,4 +1,4 @@
-use glam::DVec3;
+use glam::{DVec3, DQuat};
 use shalrath::parser::repr::parse_map;
 use std::collections::HashMap;
 use std::fs::{File, read_to_string};
@@ -105,6 +105,11 @@ type UnrealExportConstraint<'a, C> = Box<
     dyn Fn(&unreal_asset::Asset<C>, &unreal_asset::exports::NormalExport<PackageIndex>) -> bool
         + 'a,
 >;
+
+struct Marker {
+    origin: DVec3,
+    quat: DQuat,
+}
 
 fn with_import<'a, C: Read + Seek>(
     obj_prop_name: &'a str,
@@ -808,7 +813,7 @@ fn main() {
     // TODO remove Option<>
     let mut safe_zones: Vec<(PackageIndex, Option<String>)> = Vec::new();
 
-    let mut markers: HashMap<String, DVec3> = HashMap::new();
+    let mut markers: HashMap<String, Marker> = HashMap::new();
     let mut respawn_anchors: HashMap<String, DVec3> = HashMap::new();
     let mut parents: HashMap<String, PackageIndex> = HashMap::new();
     let mut player_starts: HashMap<String, PackageIndex> = HashMap::new();
@@ -913,8 +918,9 @@ fn main() {
             }
             "info_marker" => {
                 let origin = tb2ue::point(tb::unwrap_vec3(props.get("origin")));
+                let quat = tb2ue::quat(tb::unwrap_vec3(props.get("angles")));
                 if let Some(tag) = props.get("tag") {
-                    markers.insert(tag.clone(), origin);
+                    markers.insert(tag.clone(), Marker { origin, quat });
                 }
             }
             "func_switch" => {
@@ -1029,12 +1035,12 @@ fn main() {
         let parent_root = get_linked_export(&umap, parent_idx, "RootComponent").unwrap();
         let parent_location = get_location(&parent_root);
 
-        let Some(marker_location) = markers.get(&marker_tag) else {
+        let Some(marker) = markers.get(&marker_tag) else {
             println!("WARNING: couldn't find marker with tag: {}", marker_tag);
             continue;
         };
 
-        let relative_location = marker_location - parent_location;
+        let relative_location = marker.origin - parent_location;
 
         let parent_export = umap.get_export_mut(parent_idx).unwrap();
         let state_positions = find_array_property_mut(parent_export, "statePositions").unwrap();
@@ -1047,6 +1053,21 @@ fn main() {
             for prop in &mut struct_prop.value {
                 if let unreal_asset::properties::Property::StructProperty(struct_prop) = prop {
                     // TODO set rotation as well
+                    if struct_prop
+                        .name
+                        .get_content(|content| content == "Rotation")
+                    {
+                        for prop in &mut struct_prop.value {
+                            if let unreal_asset::properties::Property::QuatProperty(quat_prop) =
+                                prop
+                            {
+                                quat_prop.value.x.0 = marker.quat.x;
+                                quat_prop.value.y.0 = marker.quat.y;
+                                quat_prop.value.z.0 = marker.quat.z;
+                                quat_prop.value.w.0 = marker.quat.w;
+                            }
+                        }
+                    }
                     if struct_prop
                         .name
                         .get_content(|content| content == "Translation")

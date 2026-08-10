@@ -1,4 +1,4 @@
-use glam::DVec3;
+use glam::{DVec3, DQuat};
 
 const TB_TO_UNREAL_SCALE: f32 = 3.125; // TB 32 => UE 100
 
@@ -49,4 +49,23 @@ pub fn angles(mut a: DVec3) -> DVec3 {
     a.x *= -1.0; // pitch
     a.y *= -1.0; // yaw
     a
+
+    // To go from (pitch, yaw, roll) to true right-handed Euler rotation, pitch should be inverted.
+}
+
+pub fn quat(a: DVec3) -> DQuat {
+    // UE is left-handed with the +Z-axis pointing up and +X pointing
+    // forward. Therefore:
+    //
+    //     Roll        = X
+    //     Pitch       = Y
+    //     Yaw         = Z
+    //
+    let (pitch, yaw, roll) = a.into();
+    // The following angle negations were determined empirically.
+    let x = -roll;
+    let y = pitch;
+    let z = -yaw;
+    // The following rotation order was determined empirically.
+    DQuat::from_euler(glam::EulerRot::ZXY, z, x, y)
 }
