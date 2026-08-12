@@ -70,18 +70,6 @@ const MISE_FILES: &[(&str, &[u8], &[u8], &[u8])] = &[
         &[],
     ),
     (
-        "M_SafeZone_Inst",
-        include_bytes!("base/ModPack_Base/M_SafeZone_Inst.uasset"),
-        include_bytes!("base/ModPack_Base/M_SafeZone_Inst.uexp"),
-        &[],
-    ),
-    (
-        "M_SafeZone",
-        include_bytes!("base/ModPack_Base/M_SafeZone.uasset"),
-        include_bytes!("base/ModPack_Base/M_SafeZone.uexp"),
-        &[],
-    ),
-    (
         "M_HazMat",
         include_bytes!("base/ModPack_Base/M_HazMat.uasset"),
         include_bytes!("base/ModPack_Base/M_HazMat.uexp"),
