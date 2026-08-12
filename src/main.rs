@@ -979,6 +979,53 @@ fn main() {
         set_vec_property(umap.get_export_mut(idx).unwrap(), "offset", offset);
     }
 
+    // Link parents to childs
+    for (parent_idx, child_tag) in parent_to_child {
+        let parent_root = get_linked_export(&umap, parent_idx, "RootComponent").unwrap();
+        let parent_location = get_location(&parent_root);
+
+        let Some(child_idx) = tagged_static_mesh_actors.get(&child_tag) else {
+            println!("WARNING: couldn't find child with tag: {}", child_tag);
+            continue;
+        };
+
+        let child_root = get_linked_export(&umap, *child_idx, "RootComponent").unwrap();
+        let child_location = get_location(&child_root);
+        let child_rotation = get_rotation(&child_root);
+
+        let relative_location = child_location - parent_location;
+
+        let donor_static_mesh_component =
+            get_linked_export_mut(&mut umap, *child_idx, "StaticMeshComponent").unwrap();
+        let donor_static_mesh_import_idx = set_obj_property(
+            donor_static_mesh_component,
+            "StaticMesh",
+            PackageIndex::new(0),
+        );
+        let donor_override_materials =
+            find_array_property_mut(donor_static_mesh_component, "OverrideMaterials")
+                .map(|v| v.clone());
+        // TODO double check I did this right
+        deep_delete_export(&mut umap, *child_idx);
+
+        let recipient_static_mesh_component =
+            get_linked_export_mut(&mut umap, parent_idx, "StaticMesh").unwrap();
+        set_obj_property(
+            recipient_static_mesh_component,
+            "StaticMesh",
+            donor_static_mesh_import_idx,
+        );
+        set_location(recipient_static_mesh_component, relative_location);
+        set_rotation(recipient_static_mesh_component, child_rotation);
+        let recipient_override_materials =
+            find_array_property_mut(recipient_static_mesh_component, "OverrideMaterials");
+        if let Some(recipient_override_materials) = recipient_override_materials
+            && let Some(donor_override_materials) = donor_override_materials
+        {
+            recipient_override_materials.value = donor_override_materials.value;
+        }
+    }
+
     // Link parents to markers
     for (parent_idx, marker_tag) in parent_to_marker {
         let parent_root = get_linked_export(&umap, parent_idx, "RootComponent").unwrap();
@@ -1033,52 +1080,6 @@ fn main() {
                     }
                 }
             }
-        }
-    }
-
-    // Link parents to childs
-    // Note: this modifies the position of the parent!
-    for (parent_idx, child_tag) in parent_to_child {
-        let Some(child_idx) = tagged_static_mesh_actors.get(&child_tag) else {
-            println!("WARNING: couldn't find child with tag: {}", child_tag);
-            continue;
-        };
-
-        let child_root = get_linked_export(&umap, *child_idx, "RootComponent").unwrap();
-        let child_location = get_location(&child_root);
-        let child_rotation = get_rotation(&child_root);
-
-        let parent_root = get_linked_export_mut(&mut umap, parent_idx, "RootComponent").unwrap();
-        set_location(parent_root, child_location);
-
-        let donor_static_mesh_component =
-            get_linked_export_mut(&mut umap, *child_idx, "StaticMeshComponent").unwrap();
-        let donor_static_mesh_import_idx = set_obj_property(
-            donor_static_mesh_component,
-            "StaticMesh",
-            PackageIndex::new(0),
-        );
-        let donor_override_materials =
-            find_array_property_mut(donor_static_mesh_component, "OverrideMaterials")
-                .map(|v| v.clone());
-        // TODO double check I did this right
-        deep_delete_export(&mut umap, *child_idx);
-
-        let recipient_static_mesh_component =
-            get_linked_export_mut(&mut umap, parent_idx, "StaticMesh").unwrap();
-        set_obj_property(
-            recipient_static_mesh_component,
-            "StaticMesh",
-            donor_static_mesh_import_idx,
-        );
-        set_location(recipient_static_mesh_component, DVec3::default());
-        set_rotation(recipient_static_mesh_component, child_rotation);
-        let recipient_override_materials =
-            find_array_property_mut(recipient_static_mesh_component, "OverrideMaterials");
-        if let Some(recipient_override_materials) = recipient_override_materials
-            && let Some(donor_override_materials) = donor_override_materials
-        {
-            recipient_override_materials.value = donor_override_materials.value;
         }
     }
 
