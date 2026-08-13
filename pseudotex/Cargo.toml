@@ -1,0 +1,7 @@
+[package]
+name = "pseudotex"
+version = "0.1.0"
+edition = "2024"
+description = "UE5.1 texture cooker"
+
+[dependencies]

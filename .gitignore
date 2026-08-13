@@ -1,6 +1,7 @@
 # Rust build artifacts
 /target
 /pseudocooker/target
+/pseudotex/target
 
 # pseudochef outputs
 /dbg
