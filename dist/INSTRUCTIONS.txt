@@ -1,5 +1,11 @@
 SETUP
 
+    0. Install TrenchBroom and run it
+
+        You have to run TrenchBroom at least once for it to create the user
+        config folder, which is where you'll be putting the Pseudoregalia game
+        config in the next step.
+
     1. Install the Pseudoregalia TrenchBroom game config
 
         The "Pseudoregalia" folder in this archive is the TrenchBroom game
@@ -28,7 +34,7 @@ SETUP
             C:\Program Files (x86)\Steam\steamapps\common\Pseudoregalia\
 
         Under 'Compilation Tools', for 'pseudochef', put in the path to
-        'pseudochef.exe'.
+        'pseudochef.exe'. Same for 'dump_assets'.
 
         This step sets important variables that are critical for the next step
         to work correctly.
@@ -51,6 +57,17 @@ SETUP
         'Compile' now will build the map into a .pak file, install it into your
         game path, and load it up in the game (using command-line arguments
         which only work with quickstart mod).
+
+    5. (optional) Dump the game's assets
+
+        To see the game's assets in the TrenchBroom editor preview, you'll need
+        to extract the game's assets out of its pak. I've prepared a
+        compilation profile in TrenchBroom that does just that. Under 'Run' >
+        'Compile Map...', select the compilation profile titled 'Dump game
+        assets' and click 'Compile'. Verify that "Finished with exit code 0",
+        then under 'File', click 'Reload Material Collections'. Now, in the
+        'Face' tab on the right, you should see the Material Browser populated
+        with the textures from the game.
 
 HELP
 
