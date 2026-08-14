@@ -19,6 +19,7 @@ echo.
 
 
 copy "target\release\pseudochef.exe" "dist\"
+copy "target\release\dump_assets.exe" "dist\"
 cd "dist\"
 7z u "..\%ZIP_NAME%" *
 cd ..

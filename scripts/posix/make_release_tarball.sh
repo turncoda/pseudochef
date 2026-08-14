@@ -33,5 +33,6 @@ echo "Writing to: ${TARBALL_NAME}"
 echo
 
 cp target/release/pseudochef dist/
+cp target/release/dump_assets dist/
 cd dist/
 tar -czvf "../${TARBALL_NAME}" *
