@@ -26,11 +26,13 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     assert_eq!(
         args.len(),
-        3,
-        "usage: dump_textures path/to/my.pak path/to/dump/dir"
+        2,
+        "Usage example: dump_assets.exe \"C:\\Program Files (x86)\\Steam\\steamapps\\common\\Pseudoregalia\""
     );
-    let mut pak_file = File::open(&args[1]).expect("failed to open pak file");
-    let out_dir = Path::new(&args[2]);
+    let game_dir = Path::new(&args[1]);
+    let pak_path = game_dir.join("pseudoregalia/Content/Paks/pseudoregalia-Windows.pak");
+    let mut pak_file = File::open(pak_path).expect("failed to open pak file");
+    let texture_out_dir = game_dir.join("textures");
     let pak = PakBuilder::new()
         .reader(&mut pak_file)
         .expect("failed to read pak file");
@@ -43,7 +45,7 @@ fn main() {
         let uexp_path = uasset_path.with_extension("uexp");
         let bin_path = uasset_path.with_extension("ppm");
         let bin_path = bin_path.strip_prefix("pseudoregalia/Content").unwrap();
-        let out_path = out_dir.join(bin_path);
+        let out_path = texture_out_dir.join(bin_path);
         if let Some(parent) = out_path.parent() {
             create_dir_all(parent).expect("failed to create parent dirs");
         }
