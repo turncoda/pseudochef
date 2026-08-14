@@ -2,6 +2,7 @@ use repak::PakBuilder;
 use std::fs::{File, create_dir_all};
 use std::io::Cursor;
 use std::path::Path;
+use std::process::exit;
 use unreal_asset::Asset;
 use unreal_asset::engine_version::EngineVersion::VER_UE5_1;
 use unreal_asset::exports::ExportNormalTrait;
@@ -22,13 +23,26 @@ const EXCLUDE: &[&str] = &[
     "pseudoregalia/Content/MatTex/Textures/TilingNoise05", // has odd format
 ];
 
+fn read_example_pak() {
+    const EXAMPLE_PAK: &[u8] = include_bytes!("pakchunk347-Windows.pak");
+    let mut reader = Cursor::new(EXAMPLE_PAK);
+    let pak = PakBuilder::new().reader(&mut reader).unwrap();
+    pak.get("arrow_down.uexp", &mut reader).unwrap();
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    assert_eq!(
-        args.len(),
-        2,
-        "Usage example: dump_assets.exe \"C:\\Program Files (x86)\\Steam\\steamapps\\common\\Pseudoregalia\""
-    );
+    if args.len() < 2 {
+        const EXAMPLE_PATH: &str =
+            "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Pseudoregalia";
+        println!("Usage example: dump_assets.exe \"{}\"", EXAMPLE_PATH);
+        exit(1);
+    }
+    if args[1] == "--download-oodle" {
+        // Force repak to download Oodle DLL.
+        read_example_pak();
+        exit(0);
+    }
     let game_dir = Path::new(&args[1]);
     let pak_path = game_dir.join("pseudoregalia/Content/Paks/pseudoregalia-Windows.pak");
     let mut pak_file = File::open(pak_path).expect("failed to open pak file");
@@ -42,6 +56,7 @@ fn main() {
     entries.retain(|path| path.ends_with(".uasset"));
     for entry in entries {
         let uasset_path = Path::new(&entry);
+        dbg!(&uasset_path);
         let uexp_path = uasset_path.with_extension("uexp");
         let bin_path = uasset_path.with_extension("ppm");
         let bin_path = bin_path.strip_prefix("pseudoregalia/Content").unwrap();

@@ -12,6 +12,7 @@
 /*.zip
 /dist/*.exe
 /dist/*.zip
+/dist/*.dll
 
 # TrenchBroom
 /autosave

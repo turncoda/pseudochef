@@ -21,6 +21,10 @@ echo.
 copy "target\release\pseudochef.exe" "dist\"
 copy "target\release\dump_assets.exe" "dist\"
 cd "dist\"
+
+REM Force repak to download Oodle DLL.
+dump_assets.exe --download-oodle
+
 7z u "..\%ZIP_NAME%" *
 cd ..
 7z l "%ZIP_NAME%"
