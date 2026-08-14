@@ -219,7 +219,7 @@ pub(crate) fn deep_delete_export<C: Read + Seek>(
         }
     };
 
-    let mut tombstone_count = 0;
+    let mut _tombstone_count = 0;
     for &idx in &doomed {
         let export = umap.get_export(idx).unwrap();
         let old_name = export.get_base_export().object_name.get_owned_content();
@@ -243,7 +243,7 @@ pub(crate) fn deep_delete_export<C: Read + Seek>(
         base.create_before_serialization_dependencies.clear();
         base.serialization_before_create_dependencies = vec![class_idx, cdo_idx];
         // create_before_create_dependencies (the outer chain) stays valid as-is.
-        tombstone_count += 1;
+        _tombstone_count += 1;
     }
 
     // Scrub surviving references to the doomed exports: drop them from
@@ -275,7 +275,7 @@ pub(crate) fn deep_delete_export<C: Read + Seek>(
         }
     }
     #[cfg(debug_assertions)]
-    println!("- (deleted {} more dependent exports)", tombstone_count - 1);
+    println!("- (deleted {} more dependent exports)", _tombstone_count - 1);
 }
 
 #[cfg(test)]
