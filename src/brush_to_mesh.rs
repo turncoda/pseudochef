@@ -1,6 +1,7 @@
 //! Convert Quake-style brushes into UE-space triangulated meshes.
 //! Largely written using Claude Code with access to Unreal Engine 5.1 source code.
 
+use crate::texture_collection::TextureCollection;
 use glam::{DMat3, DVec2, DVec3, Vec3};
 use itertools::Itertools;
 use spade::{DelaunayTriangulation, Point2, Triangulation};
@@ -107,7 +108,13 @@ pub fn get_aabb(brush: &shalrath::repr::Brush) -> AxisAlignedBoundingBox {
     AxisAlignedBoundingBox { origin, extents }
 }
 
-fn derive_uvs(plane: &shalrath::repr::BrushPlane, points: &[DVec3]) -> Vec<DVec2> {
+fn derive_uvs(
+    plane: &shalrath::repr::BrushPlane,
+    points: &[DVec3],
+    texture_collection: &TextureCollection,
+) -> Vec<DVec2> {
+    let texture_name: &str = plane.texture.as_ref();
+    let texture = texture_collection.get(texture_name);
     if let shalrath::repr::TextureOffset::Valve { u, v } = plane.texture_offset {
         let du: DVec3 = Vec3::new(u.x, u.y, u.z).into();
         let dv: DVec3 = Vec3::new(v.x, v.y, v.z).into();
@@ -119,8 +126,8 @@ fn derive_uvs(plane: &shalrath::repr::BrushPlane, points: &[DVec3]) -> Vec<DVec2
             .iter()
             .map(|p| {
                 DVec2::new(
-                    p.dot(du) / x_scale + u_offset,
-                    p.dot(dv) / y_scale + v_offset,
+                    (p.dot(du) / x_scale + u_offset) / texture.width as f64,
+                    (p.dot(dv) / y_scale + v_offset) / texture.height as f64,
                 )
             })
             .collect()
@@ -134,6 +141,7 @@ fn derive_uvs(plane: &shalrath::repr::BrushPlane, points: &[DVec3]) -> Vec<DVec2
 pub fn convert_to_mesh(
     brush: &shalrath::repr::Brush,
     target_vertex_spacing: f64,
+    texture_collection: &TextureCollection,
 ) -> (pseudocooker::MeshInput, DVec3) {
     let vertices = compute_vertices(&brush);
 
@@ -171,7 +179,7 @@ pub fn convert_to_mesh(
     {
         let base = positions.len();
         let (points, triangles) = triangulate_face(*normal, face_vertices, target_vertex_spacing);
-        let uvs = derive_uvs(&plane, &points);
+        let uvs = derive_uvs(&plane, &points, texture_collection);
         mesh_uvs.extend(uvs);
         positions.extend(points);
         let n = true_outward_normals[i].normalize();
@@ -211,9 +219,8 @@ pub fn convert_to_mesh(
     assert_eq!(
         mesh.positions.len(),
         mesh.uvs.len(),
-        "each point has a unique corresponding uv"
+        "each point should have a unique corresponding uv"
     );
-    dbg!(&mesh.uvs);
 
     // Adjacent faces of the brush agree on where a shared edge's vertices
     // should be (same edge length, same spacing, so the same subdivision
@@ -668,7 +675,7 @@ mod tests {
         // culling/collision correctness the watertightness tests above
         // already cover.
         let brush = box_brush();
-        let (mesh, _origin) = convert_to_mesh(&brush, 0.0);
+        let (mesh, _origin) = convert_to_mesh(&brush, 0.0, &TextureCollection::new());
 
         let mesh_centroid = mesh
             .positions
@@ -698,7 +705,7 @@ mod tests {
         // A plain axis-aligned box: every vertex is formed by 3 mutually
         // perpendicular faces, the one case the old angle-based gate handled.
         let brush = box_brush();
-        let (mesh, _origin) = convert_to_mesh(&brush, 0.0);
+        let (mesh, _origin) = convert_to_mesh(&brush, 0.0, &TextureCollection::new());
 
         // 6 quad faces, triangulated into 2 triangles each (no interior
         // subdivision requested, so this is just the boundary triangulation).
@@ -712,8 +719,8 @@ mod tests {
     fn convert_to_mesh_returns_deterministic_origin_relative_to_a_brush_corner() {
         let brush = box_brush();
 
-        let (mesh1, origin1) = convert_to_mesh(&brush, 0.0);
-        let (_mesh2, origin2) = convert_to_mesh(&brush, 0.0);
+        let (mesh1, origin1) = convert_to_mesh(&brush, 0.0, &TextureCollection::new());
+        let (_mesh2, origin2) = convert_to_mesh(&brush, 0.0, &TextureCollection::new());
         assert_eq!(
             origin1, origin2,
             "origin should be deterministic across calls with the same brush"
@@ -741,7 +748,7 @@ mod tests {
         // the hypotenuse face isn't involved; it would silently drop the other
         // 4 vertices of the shape.
         let brush = wedge_brush(1.0);
-        let (mesh, _origin) = convert_to_mesh(&brush, 0.0);
+        let (mesh, _origin) = convert_to_mesh(&brush, 0.0, &TextureCollection::new());
 
         // 2 triangular caps (1 tri each) + 3 rectangular sides (2 tris each).
         assert_eq!(mesh.faces.len(), 8);
@@ -756,8 +763,8 @@ mod tests {
         // 10x10 face should get extra interior vertices.
         let brush = box_brush();
 
-        let (coarse, _coarse_origin) = convert_to_mesh(&brush, 0.0);
-        let (fine, _fine_origin) = convert_to_mesh(&brush, 3.0);
+        let (coarse, _coarse_origin) = convert_to_mesh(&brush, 0.0, &TextureCollection::new());
+        let (fine, _fine_origin) = convert_to_mesh(&brush, 3.0, &TextureCollection::new());
 
         assert!(fine.positions.len() > coarse.positions.len());
         assert!(fine.faces.len() > coarse.faces.len());
@@ -911,7 +918,7 @@ mod tests {
         let wedge_brush = wedge_brush(1.0);
 
         for (brush, spacing) in [(&box_brush, 0.0), (&box_brush, 3.0), (&wedge_brush, 0.0)] {
-            let (mesh, _origin) = convert_to_mesh(brush, spacing);
+            let (mesh, _origin) = convert_to_mesh(brush, spacing, &TextureCollection::new());
             let boundary_edges = find_boundary_edges(&mesh);
             assert!(
                 boundary_edges.is_empty(),
@@ -961,7 +968,7 @@ mod tests {
                 // The embedded map is raw (right-handed) TrenchBroom data, so
                 // convert it to left-handed UE space first, as production does.
                 let brush = crate::tb2ue::brush(brush.clone());
-                let (mesh, _origin) = convert_to_mesh(&brush, 64.0);
+                let (mesh, _origin) = convert_to_mesh(&brush, 64.0, &TextureCollection::new());
                 let boundary_edges = find_boundary_edges(&mesh);
                 assert!(
                     boundary_edges.is_empty(),
@@ -1003,7 +1010,7 @@ mod tests {
                 // The embedded map is raw (right-handed) TrenchBroom data, so
                 // convert it to left-handed UE space first, as production does.
                 let brush = crate::tb2ue::brush(brush.clone());
-                let (mesh, _origin) = convert_to_mesh(&brush, 64.0);
+                let (mesh, _origin) = convert_to_mesh(&brush, 64.0, &TextureCollection::new());
                 let boundary_edges = find_boundary_edges(&mesh);
                 assert!(
                     boundary_edges.is_empty(),
@@ -1024,7 +1031,7 @@ mod tests {
         // reprojection, leaving a hole that welding couldn't fix.
         let s = 9.6_f64; // 10 * 9.6 = 96 = 1.5 * 64
         let wedge_brush = wedge_brush(s);
-        let (mesh, _origin) = convert_to_mesh(&wedge_brush, 64.0);
+        let (mesh, _origin) = convert_to_mesh(&wedge_brush, 64.0, &TextureCollection::new());
         let boundary_edges = find_boundary_edges(&mesh);
         assert!(
             boundary_edges.is_empty(),
@@ -1039,7 +1046,7 @@ mod tests {
         // adjacent faces reconstructed their shared edge's vertices
         // independently and landed a few float32-ULPs apart.
         let brush = box_brush();
-        let (mesh, _origin) = convert_to_mesh(&brush, 3.0);
+        let (mesh, _origin) = convert_to_mesh(&brush, 3.0, &TextureCollection::new());
 
         for i in 0..mesh.positions.len() {
             for j in (i + 1)..mesh.positions.len() {

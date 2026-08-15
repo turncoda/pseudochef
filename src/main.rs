@@ -9,6 +9,9 @@ use unreal_asset::exports::ExportBaseTrait;
 use unreal_asset::exports::ExportNormalTrait;
 use unreal_asset::types::PackageIndex;
 
+mod texture_collection;
+use texture_collection::TextureCollection;
+
 mod brush_to_mesh;
 use brush_to_mesh::{AxisAlignedBoundingBox, convert_to_mesh, get_aabb};
 
@@ -374,8 +377,9 @@ fn pak_add_brush<W: Write + Seek>(
     brush: &shalrath::repr::Brush,
     level_name: &str,
     asset_name: &str,
+    texture_collection: &TextureCollection,
 ) -> Option<(String, DVec3)> {
-    let (mesh, origin) = convert_to_mesh(brush, FACE_VERTEX_SPACING);
+    let (mesh, origin) = convert_to_mesh(brush, FACE_VERTEX_SPACING, texture_collection);
     let cooked = pseudocooker::cook(&mesh, asset_name);
     let uasset_path = format!("Mods/Maps/{}/gen/{}.uasset", level_name, asset_name);
     pak.write_file(&uasset_path, true, &cooked.uasset)
@@ -805,6 +809,8 @@ fn main() {
             None,
         );
 
+    let texture_collection = TextureCollection::bundled();
+
     let mut num_world_brushes = 0;
     let mut num_hazard_brushes = 0;
 
@@ -839,7 +845,8 @@ fn main() {
                     num_world_brushes += 1;
                     let name = format!("WorldBrush{}", num_world_brushes);
                     let (abs_path, origin) =
-                        pak_add_brush(&mut pak, &brush, &map_name, &name).unwrap();
+                        pak_add_brush(&mut pak, &brush, &map_name, &name, &texture_collection)
+                            .unwrap();
                     let idx = add_static_mesh_import(&mut umap, &abs_path);
                     add_static_mesh_actor(&mut umap, idx, origin);
                 }
@@ -863,7 +870,8 @@ fn main() {
                     num_hazard_brushes += 1;
                     let name = format!("HazardZoneBrush{}", num_hazard_brushes);
                     let (abs_path, origin) =
-                        pak_add_brush(&mut pak, &brush, &map_name, &name).unwrap();
+                        pak_add_brush(&mut pak, &brush, &map_name, &name, &texture_collection)
+                            .unwrap();
                     let idx = add_static_mesh_import(&mut umap, &abs_path);
                     add_hazard_actor(&mut umap, idx, origin);
                 }
