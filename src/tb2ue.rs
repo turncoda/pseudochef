@@ -24,16 +24,29 @@ fn scale(brush: &mut shalrath::repr::Brush, scale: f32) {
         scale_point(&mut plane.plane.v0, scale);
         scale_point(&mut plane.plane.v1, scale);
         scale_point(&mut plane.plane.v2, scale);
+        if let shalrath::repr::TextureOffset::Valve{ u, v } = &mut plane.texture_offset {
+            u.x /= scale;
+            u.y /= scale;
+            u.z /= scale;
+            u.d /= scale;
+
+            v.x /= scale;
+            v.y /= scale;
+            v.z /= scale;
+            v.d /= scale;
+        }
     }
 }
 
 fn mirror_xz(brush: &mut shalrath::repr::Brush) {
-    let mut planes = vec![];
     for plane in &mut brush.0 {
         flip_y(&mut plane.plane.v0);
         flip_y(&mut plane.plane.v1);
         flip_y(&mut plane.plane.v2);
-        planes.push(plane);
+        if let shalrath::repr::TextureOffset::Valve{ u, v } = &mut plane.texture_offset {
+            u.y = -u.y;
+            v.y = -v.y;
+        }
     }
 }
 

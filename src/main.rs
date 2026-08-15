@@ -34,6 +34,12 @@ const MISE_FILES: &[(&str, &[u8], &[u8], &[u8])] = &[
         include_bytes!("base/ModPack_Base/SM_StarterGate.ubulk"),
     ),
     (
+        "MI_Tex",
+        include_bytes!("base/ModPack_Base/MI_Tex.uasset"),
+        include_bytes!("base/ModPack_Base/MI_Tex.uexp"),
+        &[],
+    ),
+    (
         "MI_ExampleMat",
         include_bytes!("base/ModPack_Base/MI_ExampleMat.uasset"),
         include_bytes!("base/ModPack_Base/MI_ExampleMat.uexp"),

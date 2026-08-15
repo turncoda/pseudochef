@@ -1,7 +1,7 @@
 //! Convert Quake-style brushes into UE-space triangulated meshes.
 //! Largely written using Claude Code with access to Unreal Engine 5.1 source code.
 
-use glam::{DMat3, DVec3};
+use glam::{DMat3, DVec2, DVec3, Vec3};
 use itertools::Itertools;
 use spade::{DelaunayTriangulation, Point2, Triangulation};
 use std::collections::HashMap;
@@ -107,6 +107,28 @@ pub fn get_aabb(brush: &shalrath::repr::Brush) -> AxisAlignedBoundingBox {
     AxisAlignedBoundingBox { origin, extents }
 }
 
+fn derive_uvs(plane: &shalrath::repr::BrushPlane, points: &[DVec3]) -> Vec<DVec2> {
+    if let shalrath::repr::TextureOffset::Valve { u, v } = plane.texture_offset {
+        let du: DVec3 = Vec3::new(u.x, u.y, u.z).into();
+        let dv: DVec3 = Vec3::new(v.x, v.y, v.z).into();
+        let u_offset = u.d as f64;
+        let v_offset = v.d as f64;
+        let x_scale = plane.scale_x as f64;
+        let y_scale = plane.scale_y as f64;
+        points
+            .iter()
+            .map(|p| {
+                DVec2::new(
+                    p.dot(du) / x_scale + u_offset,
+                    p.dot(dv) / y_scale + v_offset,
+                )
+            })
+            .collect()
+    } else {
+        vec![DVec2::default(); points.len()]
+    }
+}
+
 /// `target_vertex_spacing` controls triangulation density. Higher = more sparse.
 /// Returns the triangulated mesh and the origin it is relative to.
 pub fn convert_to_mesh(
@@ -123,6 +145,8 @@ pub fn convert_to_mesh(
         .min_by(|a, b| (a.x, a.y, a.z).partial_cmp(&(b.x, b.y, b.z)).unwrap())
         .expect("a convex brush has at least one vertex");
 
+    let planes: Vec<_> = brush.0.iter().collect();
+
     // Inward normals.
     let normals: Vec<_> = brush
         .0
@@ -135,33 +159,62 @@ pub fn convert_to_mesh(
     let mut positions = vec![];
     let mut faces = vec![];
     let mut mesh_normals = vec![];
-    for (i, (normal, face_vertices)) in normals.iter().zip(vertices.iter()).enumerate() {
+    let mut material_names = vec![];
+    let mut mesh_uvs = vec![];
+    // TODO All of this can be derived from the plane index;
+    // eventually we should do it in the loop instead of before it.
+    for (i, ((normal, face_vertices), plane)) in normals
+        .iter()
+        .zip(vertices.iter())
+        .zip(planes.iter())
+        .enumerate()
+    {
         let base = positions.len();
         let (points, triangles) = triangulate_face(*normal, face_vertices, target_vertex_spacing);
-        positions.extend(points.iter().map(|p| [p.x, p.y, p.z]));
+        let uvs = derive_uvs(&plane, &points);
+        mesh_uvs.extend(uvs);
+        positions.extend(points);
         let n = true_outward_normals[i].normalize();
         let normal_index = mesh_normals.len();
         mesh_normals.push([n.x, n.y, n.z]);
+        let material_index = material_names.len();
+        material_names.push(plane.texture.clone());
         for [a, b, c] in triangles {
-            // TODO unhardcode material_index; would need to pass in whole entity, not just brush
             faces.push(pseudocooker::Face {
-                material_index: 0,
+                material_index,
                 corners: vec![
-                    pseudocooker::Corner::new(base + a).with_normal(normal_index),
-                    pseudocooker::Corner::new(base + b).with_normal(normal_index),
-                    pseudocooker::Corner::new(base + c).with_normal(normal_index),
+                    pseudocooker::Corner::new(base + a)
+                        .with_normal(normal_index)
+                        .with_uv(base + a),
+                    pseudocooker::Corner::new(base + b)
+                        .with_normal(normal_index)
+                        .with_uv(base + b),
+                    pseudocooker::Corner::new(base + c)
+                        .with_normal(normal_index)
+                        .with_uv(base + c),
                 ],
             });
         }
     }
 
+    let positions = positions.iter().map(|p| [p.x, p.y, p.z]).collect();
+    let mesh_uvs = mesh_uvs.iter().map(|c| [c.x, c.y]).collect();
+
     let mut mesh = pseudocooker::MeshInput {
         positions,
-        uvs: vec![],
+        uvs: mesh_uvs,
         normals: mesh_normals,
         faces,
-        material_names: vec![],
+        material_names,
     };
+
+    assert_eq!(
+        mesh.positions.len(),
+        mesh.uvs.len(),
+        "each point has a unique corresponding uv"
+    );
+    dbg!(&mesh.uvs);
+
     // Adjacent faces of the brush agree on where a shared edge's vertices
     // should be (same edge length, same spacing, so the same subdivision
     // points), but each face reconstructs its own vertex positions from its
