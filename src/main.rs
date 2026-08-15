@@ -339,8 +339,16 @@ fn find_obj_property_mut<'a>(
     result
 }
 
+fn set_import<C: Read + Seek>(uasset: &mut unreal_asset::Asset<C>, idx: PackageIndex, value: &str) {
+    let fname = uasset.add_fname(value);
+    assert!(idx.index < 0);
+    let idx = (-idx.index - 1) as usize;
+    let import = &mut uasset.imports[idx];
+    import.object_name = fname;
+}
+
 fn find_import<C: Read + Seek>(
-    asset: &mut unreal_asset::Asset<C>,
+    asset: &unreal_asset::Asset<C>,
     class_name: &str,
     object_name: &str,
 ) -> Option<PackageIndex> {
@@ -370,6 +378,47 @@ fn add_actor_to_level<C: Read + Seek>(asset: &mut unreal_asset::Asset<C>, idx: P
     } else {
         panic!();
     }
+}
+
+fn pak_add_material<W: Write + Seek>(
+    pak: &mut repak::PakWriter<W>,
+    texture_path: &str,
+    level_name: &str,
+) -> String {
+    let (_, uasset_bytes, uexp_bytes, _) =
+        MISE_FILES.iter().find(|entry| entry.0 == "MI_Tex").unwrap();
+    let mut uasset = unreal_asset::Asset::new(
+        std::io::Cursor::new(uasset_bytes),
+        Some(std::io::Cursor::new(uexp_bytes)),
+        unreal_asset::engine_version::EngineVersion::VER_UE5_1,
+        None,
+    )
+    .unwrap();
+
+    let texture_name = if let Some(idx) = texture_path[..texture_path.len() - 1].rfind("/") {
+        &texture_path[idx + 1..]
+    } else {
+        texture_path
+    };
+    let path_idx = find_import(&uasset, "Package", "/Game/Mods/Maps/ModPack_Base/T_Debug").unwrap();
+    let name_idx = find_import(&uasset, "Texture2D", "T_Debug").unwrap();
+    set_import(&mut uasset, path_idx, texture_path);
+    set_import(&mut uasset, name_idx, texture_name);
+
+    let mut cooked_uasset_bytes = vec![];
+    let mut cooked_uexp_bytes = vec![];
+    uasset.write_data(
+        &mut std::io::Cursor::new(&mut cooked_uasset_bytes),
+        Some(&mut std::io::Cursor::new(&mut cooked_uexp_bytes)),
+    ).unwrap();
+
+    let asset_name = format!("MI_{}", texture_name);
+    let stem_path = format!("Mods/Maps/{}/mat/{}", level_name, asset_name);
+    let uasset_path = format!("{}.uasset", stem_path);
+    let uexp_path = format!("{}.uexp", stem_path);
+    pak.write_file(&uasset_path, true, &cooked_uasset_bytes).unwrap();
+    pak.write_file(&uexp_path, true, &cooked_uexp_bytes).unwrap();
+    stem_path
 }
 
 fn pak_add_brush<W: Write + Seek>(
@@ -809,7 +858,13 @@ fn main() {
             None,
         );
 
-    let texture_collection = TextureCollection::bundled();
+    let mut texture_collection = TextureCollection::bundled();
+
+    for (&key, value) in texture_collection.iter_mut() {
+        let texture_path = format!("/Game/{}", key);
+        let material_path = pak_add_material(&mut pak, &texture_path, &map_name);
+        value.material_path = Some(material_path);
+    }
 
     let mut num_world_brushes = 0;
     let mut num_hazard_brushes = 0;
