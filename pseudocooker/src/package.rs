@@ -15,8 +15,11 @@
 //!   - AssetRegistryDataOffset: for a PKG_Cooked package, the Asset Registry's
 //!     FPackageReader::ReadAssetRegistryDataFromCookedPackage derives asset info entirely from the
 //!     already-parsed Name/Import/ Export maps -- it does NOT seek to or read
-//!     AssetRegistryDataOffset at all. Its value is therefore irrelevant; we set it to
-//!     TotalHeaderSize (an empty, harmless "section").
+//!     AssetRegistryDataOffset at all. The engine doesn't care what it points at, but external
+//!     tools (UAssetAPI/UAssetGUI) do seek there and parse a section whenever the offset is > 0,
+//!     so we write a real empty section: a single int32 asset count of 0. (With
+//!     PKG_FilterEditorOnly set this is the whole section -- the dependency-flags format with
+//!     bit arrays only applies to non-filter-editor-only packages.)
 
 use crate::bodysetup;
 use crate::core::{write_fname_ref, write_name_table_entry, Name, NameTable, Writer};
@@ -312,7 +315,9 @@ pub fn cook_package(package_short_name: &str, mesh: &RenderMesh) -> (Vec<u8>, Ve
     // eight bool/uint32 fields) + 4*5 (dependency ints) = 96.
     let export_table_size = exports.len() * 96;
     let preload_dependency_offset = export_offset + export_table_size;
-    let total_header_size = preload_dependency_offset + preload_dependency_array.len() * 4;
+    let asset_registry_data_offset = preload_dependency_offset + preload_dependency_array.len() * 4;
+    // empty asset-registry section: int32 asset count = 0 (see module docs)
+    let total_header_size = asset_registry_data_offset + 4;
 
     let mut running_offset = 0usize;
     let mut export_serial_offsets = Vec::with_capacity(exports.len());
@@ -356,7 +361,7 @@ pub fn cook_package(package_short_name: &str, mesh: &RenderMesh) -> (Vec<u8>, Ve
     for &idx in &preload_dependency_array {
         preload_dependency_w.i32(idx);
     }
-    assert_eq!(preload_dependency_w.tell(), total_header_size - preload_dependency_offset);
+    assert_eq!(preload_dependency_w.tell(), asset_registry_data_offset - preload_dependency_offset);
 
     let mut header_bytes = header.into_bytes();
 
@@ -377,7 +382,7 @@ pub fn cook_package(package_short_name: &str, mesh: &RenderMesh) -> (Vec<u8>, Ve
     patch_i32(&mut header_bytes, import_offset_pos, import_offset as i32);
     patch_i32(&mut header_bytes, gen_export_count_pos, exports.len() as i32);
     patch_i32(&mut header_bytes, gen_name_count_pos, table.names.len() as i32);
-    patch_i32(&mut header_bytes, asset_registry_data_offset_pos, total_header_size as i32); // inert, see docs
+    patch_i32(&mut header_bytes, asset_registry_data_offset_pos, asset_registry_data_offset as i32);
     patch_i64(&mut header_bytes, bulk_data_start_offset_pos, (total_header_size + total_export_body_size) as i64);
     patch_i32(&mut header_bytes, names_referenced_pos, table.names.len() as i32); // informational; safe upper bound
     patch_i32(&mut header_bytes, preload_dependency_count_pos, preload_dependency_array.len() as i32);
@@ -389,6 +394,7 @@ pub fn cook_package(package_short_name: &str, mesh: &RenderMesh) -> (Vec<u8>, Ve
     uasset.extend_from_slice(&import_table_w.getvalue());
     uasset.extend_from_slice(&export_table_w.getvalue());
     uasset.extend_from_slice(&preload_dependency_w.getvalue());
+    uasset.extend_from_slice(&0i32.to_le_bytes()); // empty asset-registry section
     assert_eq!(uasset.len(), total_header_size);
 
     // --- uexp ---
