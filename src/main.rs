@@ -804,7 +804,21 @@ fn add_static_mesh_actor<C: Read + Seek>(
     // Find the cloned StaticMeshComponent0 and redirect it to the new import.
     let export4 = get_linked_export_mut(umap, idx3, "StaticMeshComponent").unwrap();
     set_obj_property(export4, "StaticMesh", import_idx);
+    delete_array_property(export4, "OverrideMaterials");
     set_location(export4, origin);
+}
+
+fn delete_array_property(export: &mut unreal_asset::Export<PackageIndex>, name: &str) {
+    let export = export.get_normal_export_mut().unwrap();
+    export.properties.retain(|prop| {
+        if let unreal_asset::properties::Property::ArrayProperty(arr_prop) = prop
+            && arr_prop.name.get_content(|content| content == name)
+        {
+            return false;
+        } else {
+            return true;
+        }
+    });
 }
 
 fn reroute_imports<C: Read + Seek>(umap: &mut unreal_asset::Asset<C>, src: &str, dst: &str) {
