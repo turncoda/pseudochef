@@ -413,12 +413,14 @@ fn pak_add_material<W: Write + Seek>(
     ).unwrap();
 
     let asset_name = format!("MI_{}", texture_name);
-    let stem_path = format!("/Game/Mods/Maps/{}/mat/{}", level_name, asset_name);
+    // Pak paths have no /Game prefix (the mount point maps Mods/... to /Game/Mods/..., same as
+    // pak_add_brush); the returned object path keeps it for use in slot names and imports.
+    let stem_path = format!("Mods/Maps/{}/mat/{}", level_name, asset_name);
     let uasset_path = format!("{}.uasset", stem_path);
     let uexp_path = format!("{}.uexp", stem_path);
     pak.write_file(&uasset_path, true, &cooked_uasset_bytes).unwrap();
     pak.write_file(&uexp_path, true, &cooked_uexp_bytes).unwrap();
-    stem_path
+    format!("/Game/{}", stem_path)
 }
 
 fn pak_add_brush<W: Write + Seek>(
