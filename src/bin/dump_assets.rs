@@ -56,7 +56,6 @@ fn main() {
     entries.retain(|path| path.ends_with(".uasset"));
     for entry in entries {
         let uasset_path = Path::new(&entry);
-        dbg!(&uasset_path);
         let uexp_path = uasset_path.with_extension("uexp");
         let bin_path = uasset_path.with_extension("ppm");
         let bin_path = bin_path.strip_prefix("pseudoregalia/Content").unwrap();
