@@ -127,7 +127,7 @@ fn derive_uvs(
             .map(|p| {
                 DVec2::new(
                     (p.dot(du) / x_scale + u_offset) / texture.width as f64,
-                    (p.dot(dv) / y_scale + v_offset) / texture.height as f64,
+                    -(p.dot(dv) / y_scale + v_offset) / texture.height as f64,
                 )
             })
             .collect()

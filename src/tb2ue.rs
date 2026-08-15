@@ -25,15 +25,15 @@ fn scale(brush: &mut shalrath::repr::Brush, scale: f32) {
         scale_point(&mut plane.plane.v1, scale);
         scale_point(&mut plane.plane.v2, scale);
         if let shalrath::repr::TextureOffset::Valve{ u, v } = &mut plane.texture_offset {
+            // Divide by scale here so the dot product with the world point
+            // (which has been scaled up) remains the same.
             u.x /= scale;
             u.y /= scale;
             u.z /= scale;
-            u.d /= scale;
 
             v.x /= scale;
             v.y /= scale;
             v.z /= scale;
-            v.d /= scale;
         }
     }
 }
