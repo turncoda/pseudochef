@@ -186,6 +186,9 @@ pub fn convert_to_mesh(
         let normal_index = mesh_normals.len();
         mesh_normals.push([n.x, n.y, n.z]);
         let material_index = material_names.len();
+        // TODO synthesize the UE material
+        // TODO store the path to the UE material in the TextureCollection
+        // TODO put in the path to the UE material instead of the texture
         material_names.push(plane.texture.clone());
         for [a, b, c] in triangles {
             faces.push(pseudocooker::Face {
