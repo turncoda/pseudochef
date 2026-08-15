@@ -405,6 +405,17 @@ fn pak_add_material<W: Write + Seek>(
     set_import(&mut uasset, path_idx, texture_path);
     set_import(&mut uasset, name_idx, texture_name);
 
+    // The clone's asset export is still named "MI_Tex". Imports of this material resolve by
+    // export ObjectName, so rename it to match the package's asset name.
+    let asset_name = format!("MI_{}", texture_name);
+    let mi_idx = find_export(&uasset, &[with_name("MI_Tex")]).unwrap();
+    let fname = uasset.add_fname(&asset_name);
+    uasset
+        .get_export_mut(mi_idx)
+        .unwrap()
+        .get_base_export_mut()
+        .object_name = fname;
+
     let mut cooked_uasset_bytes = vec![];
     let mut cooked_uexp_bytes = vec![];
     uasset.write_data(
@@ -412,7 +423,6 @@ fn pak_add_material<W: Write + Seek>(
         Some(&mut std::io::Cursor::new(&mut cooked_uexp_bytes)),
     ).unwrap();
 
-    let asset_name = format!("MI_{}", texture_name);
     // Pak paths have no /Game prefix (the mount point maps Mods/... to /Game/Mods/..., same as
     // pak_add_brush); the returned object path keeps it for use in slot names and imports.
     let stem_path = format!("Mods/Maps/{}/mat/{}", level_name, asset_name);
