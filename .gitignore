@@ -5,8 +5,9 @@
 
 # pseudochef outputs
 /dbg
-/dbg.umap
-/dbg.uexp
+/*.uasset
+/*.umap
+/*.uexp
 /*.pak
 /*.exe
 /*.zip
