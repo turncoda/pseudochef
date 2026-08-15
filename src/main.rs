@@ -423,8 +423,7 @@ fn pak_add_material<W: Write + Seek>(
         Some(&mut std::io::Cursor::new(&mut cooked_uexp_bytes)),
     ).unwrap();
 
-    // Pak paths have no /Game prefix (the mount point maps Mods/... to /Game/Mods/..., same as
-    // pak_add_brush); the returned object path keeps it for use in slot names and imports.
+    let asset_name = format!("MI_{}", texture_name);
     let stem_path = format!("Mods/Maps/{}/mat/{}", level_name, asset_name);
     let uasset_path = format!("{}.uasset", stem_path);
     let uexp_path = format!("{}.uexp", stem_path);
