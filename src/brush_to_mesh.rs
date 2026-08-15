@@ -167,7 +167,7 @@ pub fn convert_to_mesh(
     let mut positions = vec![];
     let mut faces = vec![];
     let mut mesh_normals = vec![];
-    let mut material_names = vec![];
+    let mut material_names = vec!["(pseudochef: not found)".to_string()];
     let mut mesh_uvs = vec![];
     // TODO All of this can be derived from the plane index;
     // eventually we should do it in the loop instead of before it.
@@ -185,11 +185,14 @@ pub fn convert_to_mesh(
         let n = true_outward_normals[i].normalize();
         let normal_index = mesh_normals.len();
         mesh_normals.push([n.x, n.y, n.z]);
-        let material_index = material_names.len();
-        // TODO synthesize the UE material
-        // TODO store the path to the UE material in the TextureCollection
-        // TODO put in the path to the UE material instead of the texture
-        material_names.push(plane.texture.clone());
+        // TODO re-use repeat materials (probably not a big deal either way)
+        let material_index =
+            if let Some(material_path) = texture_collection.get(&plane.texture).material_path {
+                material_names.push(material_path);
+                material_names.len() - 1
+            } else {
+                0
+            };
         for [a, b, c] in triangles {
             faces.push(pseudocooker::Face {
                 material_index,
