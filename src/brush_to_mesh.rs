@@ -167,7 +167,7 @@ pub fn convert_to_mesh(
     let mut positions = vec![];
     let mut faces = vec![];
     let mut mesh_normals = vec![];
-    let mut material_names = vec!["(pseudochef: not found)".to_string()];
+    let mut material_names = vec!["/pseudochef/failed/to/find/material".to_string()];
     let mut mesh_uvs = vec![];
     // TODO All of this can be derived from the plane index;
     // eventually we should do it in the loop instead of before it.
