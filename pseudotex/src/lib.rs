@@ -7,22 +7,32 @@ pub struct ImageData {
 }
 
 impl ImageData {
-    pub fn write_ppm<W: std::io::Write>(&self, dst: &mut W) -> std::io::Result<usize> {
-        let mut ppm_data = vec![];
+    pub fn write_png<W: std::io::Write>(&self, dst: &mut W) -> std::io::Result<()> {
+        let mut data = vec![];
         for bgra in self.data.chunks(4) {
             let b = bgra.get(0).unwrap_or(&0);
             let g = bgra.get(1).unwrap_or(&0);
             let r = bgra.get(2).unwrap_or(&0);
-            ppm_data.push(*r);
-            ppm_data.push(*g);
-            ppm_data.push(*b);
+            let a = bgra.get(3).unwrap_or(&0);
+            data.push(*r);
+            data.push(*g);
+            data.push(*b);
+            data.push(*a);
         }
-
-        let mut bytes_written = 0;
-        let header = format!("P6\n{} {}\n255\n", self.width, self.height);
-        bytes_written += dst.write(header.as_bytes())?;
-        bytes_written += dst.write(&ppm_data)?;
-        Ok(bytes_written)
+        let mut encoder = png::Encoder::new(dst, self.width, self.height);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        encoder.set_source_gamma(png::ScaledFloat::new(1.0 / 2.2));
+        let source_chromaticities = png::SourceChromaticities::new(
+            (0.31270, 0.32900),
+            (0.64000, 0.33000),
+            (0.30000, 0.60000),
+            (0.15000, 0.06000),
+        );
+        encoder.set_source_chromaticities(source_chromaticities);
+        let mut writer = encoder.write_header()?;
+        writer.write_image_data(&data)?;
+        Ok(())
     }
 }
 

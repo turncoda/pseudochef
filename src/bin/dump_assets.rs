@@ -57,7 +57,7 @@ fn main() {
     for entry in entries {
         let uasset_path = Path::new(&entry);
         let uexp_path = uasset_path.with_extension("uexp");
-        let bin_path = uasset_path.with_extension("ppm");
+        let bin_path = uasset_path.with_extension("png");
         let bin_path = bin_path.strip_prefix("pseudoregalia/Content").unwrap();
         let out_path = texture_out_dir.join(bin_path);
         if let Some(parent) = out_path.parent() {
@@ -85,17 +85,16 @@ fn main() {
         match pseudotex::decode(&extra_bytes) {
             Ok(img) => {
                 let mut out_file = File::create(&out_path).unwrap();
-                let bytes_written = img.write_ppm(&mut out_file).unwrap();
+                img.write_png(&mut out_file).unwrap();
                 println!(
-                    "wrote {} bytes ({}W x {}H) to '{}'",
-                    bytes_written,
+                    "saved '{}' ({}W x {}H)",
+                    out_path.to_string_lossy(),
                     img.width,
                     img.height,
-                    out_path.to_string_lossy()
                 );
             }
             Err(err) => {
-                println!("failed to dump '{}': {}", out_path.to_string_lossy(), err);
+                println!("failed to dump '{}': {}", entry, err);
             }
         }
     }

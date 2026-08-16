@@ -5,3 +5,4 @@ edition = "2024"
 description = "UE5.1 texture cooker"
 
 [dependencies]
+png = "0.18.1"
