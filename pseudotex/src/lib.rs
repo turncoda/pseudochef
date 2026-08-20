@@ -20,8 +20,11 @@ impl ImageData {
             data.push(*a);
         }
         let mut encoder = png::Encoder::new(dst, self.width, self.height);
+
         encoder.set_color(png::ColorType::Rgba);
         encoder.set_depth(png::BitDepth::Eight);
+
+        // Copied from sample code in png crate docs
         encoder.set_source_gamma(png::ScaledFloat::new(1.0 / 2.2));
         let source_chromaticities = png::SourceChromaticities::new(
             (0.31270, 0.32900),
@@ -30,6 +33,7 @@ impl ImageData {
             (0.15000, 0.06000),
         );
         encoder.set_source_chromaticities(source_chromaticities);
+
         let mut writer = encoder.write_header()?;
         writer.write_image_data(&data)?;
         Ok(())
