@@ -179,7 +179,7 @@ Used to tweak respawn location associated with a safe_zone.
 //   * Origin: Center-bottom
 //   * Dimensions: 20, 400, 600
 // ============================================================================
-@PointClass model("gate.obj") = prop_gate : "
+@PointClass size(0 0 0, 0 0 0) model("gate.obj") = prop_gate : "
 
 A fixed-size gate. Not from the base game.
 
@@ -216,7 +216,7 @@ Marks a target location and orientation for an info_parent.
     tag(target_source) : "target from an info_parent"
 ]
 
-@PointClass model("switch_dummy.obj") = func_switch : "
+@PointClass size(0 0 0, 0 0 0) model("switch_dummy.obj") = func_switch : "
 
 Triggers an info_parent to move when hit.
 
