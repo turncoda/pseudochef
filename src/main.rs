@@ -894,10 +894,8 @@ fn main() {
     let mut num_world_brushes = 0;
     let mut num_hazard_brushes = 0;
 
-    let mut parent_to_child: Vec<(PackageIndex, String)> = Vec::new();
     let mut switches: Vec<(PackageIndex, String)> = Vec::new();
     let mut save_points: Vec<(PackageIndex, String)> = Vec::new();
-    let mut parent_to_marker: Vec<(PackageIndex, String)> = Vec::new();
     // TODO remove Option<>
     let mut safe_zones: Vec<(PackageIndex, Option<String>)> = Vec::new();
 
@@ -905,6 +903,8 @@ fn main() {
     let mut respawn_anchors: HashMap<String, DVec3> = HashMap::new();
     let mut parents: HashMap<String, PackageIndex> = HashMap::new();
     let mut player_starts: HashMap<String, PackageIndex> = HashMap::new();
+    let mut child_to_parent: HashMap<String, PackageIndex> = HashMap::new();
+    let mut parent_to_marker: HashMap<PackageIndex, String> = HashMap::new();
     let mut tagged_static_mesh_actors: HashMap<String, PackageIndex> = HashMap::new();
 
     let start = Instant::now();
@@ -997,10 +997,18 @@ fn main() {
                 let origin = tb2ue::point(tb::unwrap_vec3(props.get("origin")));
                 let idx = add_parent(&mut umap, origin);
                 if let Some(child) = props.get("child") {
-                    parent_to_child.push((idx, child.clone()));
+                    if child_to_parent.contains_key(child) {
+                        eprintln!("ERROR: multiple info_parent point to child tagged '{}'", child);
+                        panic!();
+                    }
+                    child_to_parent.insert(child.clone(), idx);
                 }
                 if let Some(dst) = props.get("destination") {
-                    parent_to_marker.push((idx, dst.clone()));
+                    if parent_to_marker.contains_key(&idx) {
+                        eprintln!("ERROR: info_parent points to multiple info_marker tagged '{}'", dst);
+                        panic!();
+                    }
+                    parent_to_marker.insert(idx, dst.clone());
                 }
                 if let Some(tag) = props.get("tag") {
                     parents.insert(tag.clone(), idx);
@@ -1074,7 +1082,7 @@ fn main() {
     }
 
     // Link parents to childs
-    for (parent_idx, child_tag) in parent_to_child {
+    for (child_tag, parent_idx) in child_to_parent {
         let parent_root = get_linked_export(&umap, parent_idx, "RootComponent").unwrap();
         let parent_location = get_location(&parent_root);
 
@@ -1099,7 +1107,6 @@ fn main() {
         let donor_override_materials =
             find_array_property_mut(donor_static_mesh_component, "OverrideMaterials")
                 .map(|v| v.clone());
-        // TODO double check I did this right
         deep_delete_export(&mut umap, *child_idx);
 
         let recipient_static_mesh_component =
