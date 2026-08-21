@@ -905,7 +905,7 @@ fn main() {
 
     let mut markers: HashMap<String, Marker> = HashMap::new();
     let mut respawn_anchors: HashMap<String, DVec3> = HashMap::new();
-    let mut parents: HashMap<String, PackageIndex> = HashMap::new();
+    let mut parents: HashMap<String, Vec<PackageIndex>> = HashMap::new();
     let mut player_starts: HashMap<String, PackageIndex> = HashMap::new();
     let mut child_to_parent: HashMap<String, PackageIndex> = HashMap::new();
     let mut parent_to_marker: HashMap<PackageIndex, String> = HashMap::new();
@@ -1021,7 +1021,10 @@ fn main() {
                     parent_to_marker.insert(idx, dst.clone());
                 }
                 if let Some(tag) = props.get("tag") {
-                    parents.insert(tag.clone(), idx);
+                    if !parents.contains_key(tag) {
+                        parents.insert(tag.clone(), vec![]);
+                    }
+                    parents.get_mut(tag).unwrap().push(idx);
                 }
             }
             "info_marker" => {
@@ -1196,24 +1199,32 @@ fn main() {
 
     // Link switches to parents
     for (switch_idx, parent_tag) in switches {
-        let Some(parent_idx) = parents.get(&parent_tag) else {
+        let Some(parent_idxs) = parents.get(&parent_tag) else {
             println!("WARNING: couldn't find parent with tag: {}", parent_tag);
             continue;
         };
-        println!("func_switch @{} -> info_parent @{}", switch_idx, parent_idx);
 
         let switch_export = umap.get_export_mut(switch_idx).unwrap();
         let associated_actors = find_array_property_mut(switch_export, "associatedActors").unwrap();
-        let mut prop = associated_actors.value[0].clone();
-        if let unreal_asset::properties::Property::ObjectProperty(obj_prop) = &mut prop {
-            obj_prop.value = *parent_idx;
-        }
+        let prop = associated_actors.value[0].clone();
         associated_actors.value.clear();
-        associated_actors.value.push(prop);
-        switch_export
-            .get_base_export_mut()
-            .create_before_serialization_dependencies
-            .push(*parent_idx);
+
+        for parent_idx in parent_idxs {
+            let mut prop = prop.clone();
+            let unreal_asset::properties::Property::ObjectProperty(obj_prop) = &mut prop else {
+                panic!("associatedActors element is not an ObjectProperty");
+            };
+            obj_prop.value = *parent_idx;
+            associated_actors.value.push(prop);
+            println!("func_switch @{} -> info_parent @{}", switch_idx, parent_idx);
+        }
+
+        for parent_idx in parent_idxs {
+            switch_export
+                .get_base_export_mut()
+                .create_before_serialization_dependencies
+                .push(*parent_idx);
+        }
     }
 
     // rename level export (for swag only; seemingly inconsequential)
