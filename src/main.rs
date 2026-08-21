@@ -418,17 +418,21 @@ fn pak_add_material<W: Write + Seek>(
 
     let mut cooked_uasset_bytes = vec![];
     let mut cooked_uexp_bytes = vec![];
-    uasset.write_data(
-        &mut std::io::Cursor::new(&mut cooked_uasset_bytes),
-        Some(&mut std::io::Cursor::new(&mut cooked_uexp_bytes)),
-    ).unwrap();
+    uasset
+        .write_data(
+            &mut std::io::Cursor::new(&mut cooked_uasset_bytes),
+            Some(&mut std::io::Cursor::new(&mut cooked_uexp_bytes)),
+        )
+        .unwrap();
 
     let asset_name = format!("MI_{}", texture_name);
     let stem_path = format!("Mods/Maps/{}/mat/{}", level_name, asset_name);
     let uasset_path = format!("{}.uasset", stem_path);
     let uexp_path = format!("{}.uexp", stem_path);
-    pak.write_file(&uasset_path, true, &cooked_uasset_bytes).unwrap();
-    pak.write_file(&uexp_path, true, &cooked_uexp_bytes).unwrap();
+    pak.write_file(&uasset_path, true, &cooked_uasset_bytes)
+        .unwrap();
+    pak.write_file(&uexp_path, true, &cooked_uexp_bytes)
+        .unwrap();
     format!("/Game/{}", stem_path)
 }
 
@@ -998,14 +1002,20 @@ fn main() {
                 let idx = add_parent(&mut umap, origin);
                 if let Some(child) = props.get("child") {
                     if child_to_parent.contains_key(child) {
-                        eprintln!("ERROR: multiple info_parent point to child tagged '{}'", child);
+                        eprintln!(
+                            "ERROR: multiple info_parent point to child tagged '{}'",
+                            child
+                        );
                         panic!();
                     }
                     child_to_parent.insert(child.clone(), idx);
                 }
                 if let Some(dst) = props.get("destination") {
                     if parent_to_marker.contains_key(&idx) {
-                        eprintln!("ERROR: info_parent points to multiple info_marker tagged '{}'", dst);
+                        eprintln!(
+                            "ERROR: info_parent points to multiple info_marker tagged '{}'",
+                            dst
+                        );
                         panic!();
                     }
                     parent_to_marker.insert(idx, dst.clone());
