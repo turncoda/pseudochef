@@ -183,6 +183,22 @@ fn find_vec_property<'a>(
     result
 }
 
+fn find_float_property_mut<'a>(
+    export: &'a mut unreal_asset::Export<PackageIndex>,
+    name: &str,
+) -> Option<&'a mut unreal_asset::properties::int_property::FloatProperty> {
+    let mut result = None;
+    let props = &mut export.get_normal_export_mut().unwrap().properties;
+    for prop in props {
+        if let unreal_asset::properties::Property::FloatProperty(float_prop) = prop
+            && float_prop.name.get_content(|content| content == name)
+        {
+            result = Some(float_prop);
+        }
+    }
+    result
+}
+
 fn find_vec_property_mut<'a>(
     export: &'a mut unreal_asset::Export<PackageIndex>,
     name: &str,
@@ -732,6 +748,12 @@ fn get_rot_property(export: &unreal_asset::Export<PackageIndex>, name: &str) -> 
     }
 }
 
+fn set_float_property(export: &mut unreal_asset::Export<PackageIndex>, name: &str, value: f32) {
+    let prop =
+        find_float_property_mut(export, name).expect(&format!("couldn't find property: {}", name));
+    prop.value.0 = value;
+}
+
 fn set_vec_property(export: &mut unreal_asset::Export<PackageIndex>, name: &str, value: DVec3) {
     let prop =
         find_vec_property_mut(export, name).expect(&format!("couldn't find property: {}", name));
@@ -904,7 +926,7 @@ fn main() {
     let mut safe_zones: Vec<(PackageIndex, Option<String>)> = Vec::new();
 
     let mut markers: HashMap<String, Marker> = HashMap::new();
-    let mut respawn_anchors: HashMap<String, DVec3> = HashMap::new();
+    let mut respawn_anchors: HashMap<String, (DVec3, f32)> = HashMap::new();
     let mut parents: HashMap<String, Vec<PackageIndex>> = HashMap::new();
     let mut player_starts: HashMap<String, PackageIndex> = HashMap::new();
     let mut child_to_parent: HashMap<String, PackageIndex> = HashMap::new();
@@ -962,8 +984,9 @@ fn main() {
             }
             "info_respawn_anchor" => {
                 let origin = tb2ue::point(tb::unwrap_vec3(props.get("origin")));
+                let rot = tb2ue::rot(tb::unwrap_yaw(props.get("angle")));
                 if let Some(tag) = props.get("tag") {
-                    respawn_anchors.insert(tag.to_string(), origin);
+                    respawn_anchors.insert(tag.to_string(), (origin, rot.yaw as f32));
                 }
             }
             "info_player_start" => {
@@ -1079,12 +1102,12 @@ fn main() {
         let root = get_linked_export(&umap, idx, "RootComponent").unwrap();
         let safe_zone_location = get_location(&root);
 
-        let offset = if let Some(target) = maybe_target
-            && let Some(anchor_location) = respawn_anchors.get(&target)
+        let (offset, yaw) = if let Some(target) = maybe_target
+            && let Some((anchor_location, yaw)) = respawn_anchors.get(&target)
         {
-            anchor_location - safe_zone_location
+            (anchor_location - safe_zone_location, *yaw)
         } else {
-            DVec3::default()
+            (DVec3::default(), 0.0)
         };
         println!(
             "safe_zone @{}: respawn_anchor w/ relative offset {}",
@@ -1092,6 +1115,7 @@ fn main() {
         );
 
         set_vec_property(umap.get_export_mut(idx).unwrap(), "offset", offset);
+        set_float_property(umap.get_export_mut(idx).unwrap(), "yaw", yaw);
     }
 
     // Link parents to childs

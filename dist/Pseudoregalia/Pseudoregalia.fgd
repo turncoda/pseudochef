@@ -170,6 +170,7 @@ Used to tweak respawn location associated with a safe_zone.
 "
 [
     tag(target_source) : "Tag"
+    angle(integer) : "Direction. Default is 0 (+X)"
 ]
 
 // === SM_StarterGate (custom) ================================================
