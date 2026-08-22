@@ -34,7 +34,18 @@ echo
 
 cp target/release/pseudochef dist/
 cp target/release/dump_assets dist/
+
 cd dist/
+
 # Force repak to download Oodle.
 ./dump_assets --download-oodle
+
+# Delete Windows-only compilation profile.
+cd Pseudoregalia/
+jq --tab '.profiles |= map(select(.name != "Build and run"))' \
+  < CompilationProfiles.cfg \
+  > out.json
+mv out.json CompilationProfiles.cfg
+cd ..
+
 tar -czvf "../${TARBALL_NAME}" *

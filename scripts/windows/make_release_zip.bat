@@ -25,6 +25,14 @@ cd "dist\"
 REM Force repak to download Oodle DLL.
 dump_assets.exe --download-oodle
 
+REM Delete Linux-only compilation profile.
+cd "Pseudoregalia\"
+jq --tab --from-file "%~dp0\remove_steam_compilation_profile.jq" ^
+  CompilationProfiles.cfg ^
+  > out.json
+move out.json CompilationProfiles.cfg
+cd ..
+
 7z u "..\%ZIP_NAME%" *
 cd ..
 7z l "%ZIP_NAME%"
