@@ -945,7 +945,7 @@ fn main() {
             continue;
         };
         match classname.as_ref() {
-            "worldspawn" => {
+            "worldspawn" | "func_group" => {
                 for brush in ent.brushes.0.into_iter() {
                     let brush = tb2ue::brush(brush);
                     num_world_brushes += 1;
