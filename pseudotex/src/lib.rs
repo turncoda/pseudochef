@@ -88,16 +88,6 @@ pub fn decode(bytes: &[u8]) -> Result<ImageData, Box<dyn std::error::Error>> {
 
     let data_size = (width * height * 4) as usize;
     let data_end_idx = OFFSET_DATA + data_size;
-    if data_end_idx >= bytes.len() {
-        return err!(
-            "dimensions ({}W x {}H x 4 bytes + {} data offset = {}) imply data larger than input buffer ({})",
-            width,
-            height,
-            OFFSET_DATA,
-            data_end_idx,
-            bytes.len()
-        );
-    }
 
     let null_byte_idx = bytes[OFFSET_TEX_FMT..]
         .iter()
