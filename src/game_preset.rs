@@ -1,4 +1,7 @@
-use std::io::{Seek, Write};
+use std::{
+    collections::{HashMap, HashSet},
+    io::{Seek, Write},
+};
 use unreal_asset::types::PackageIndex;
 
 const KEY_TITLE: &str = "Title_18_8D403C334BBBCC29B73D3CACCDAF0A08";
@@ -8,7 +11,16 @@ const KEY_PLAYER_START_TAG: &str = "PlayerStartTag_5_7797C3C742DE3A0B8EEE189EDBE
 const KEY_UPGRADES: &str = "Upgrades_12_339EDA2D4B022358B32C3984E9FAE5F1";
 const KEY_LEVEL_DISPLAY_NAMES: &str = "LevelDisplayNames_25_DDBCC3034DAA6A5AE0EB22963E27299A";
 
-pub fn pak_add<W: Write + Seek>(pak: &mut repak::PakWriter<W>, title: &str) {
+pub struct GamePreset {
+    pub title: String,
+    pub author: String,
+    pub level_name: String,
+    pub player_start_tag: String,
+    pub upgrades: HashSet<String>,
+    pub level_display_names: HashMap<String, String>,
+}
+
+pub fn pak_add<W: Write + Seek>(pak: &mut repak::PakWriter<W>, preset: &GamePreset) {
     const EXAMPLE_PRESET_UASSET: &[u8] =
         include_bytes!("Mods/PseudoMenuMod/GamePresets/Preset_Example.uasset");
     const EXAMPLE_PRESET_UEXP: &[u8] =
@@ -25,7 +37,7 @@ pub fn pak_add<W: Write + Seek>(pak: &mut repak::PakWriter<W>, title: &str) {
     let unreal_asset::Export::DataTableExport(dt_export) = export else {
         panic!();
     };
-    set_dt_str_property(dt_export, KEY_TITLE, title);
+    set_dt_str_property(dt_export, KEY_TITLE, &preset.title);
 
     // TODO rename export to match file name
 
