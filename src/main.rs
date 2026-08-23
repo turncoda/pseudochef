@@ -21,6 +21,8 @@ use unreal_asset_ext::{deep_clone_export, deep_delete_export};
 mod upgrade_data;
 use upgrade_data::{get_upgrade_data, set_upgrade_data};
 
+mod game_preset;
+
 mod tb;
 mod tb2ue;
 mod ue;
@@ -32,68 +34,68 @@ mod obj_export;
 const MISE_FILES: &[(&str, &[u8], &[u8], &[u8])] = &[
     (
         "SM_StarterGate",
-        include_bytes!("base/ModPack_Base/SM_StarterGate.uasset"),
-        include_bytes!("base/ModPack_Base/SM_StarterGate.uexp"),
-        include_bytes!("base/ModPack_Base/SM_StarterGate.ubulk"),
+        include_bytes!("Mods/Maps/ModPack_Base/SM_StarterGate.uasset"),
+        include_bytes!("Mods/Maps/ModPack_Base/SM_StarterGate.uexp"),
+        include_bytes!("Mods/Maps/ModPack_Base/SM_StarterGate.ubulk"),
     ),
     (
         "MI_Tex",
-        include_bytes!("base/ModPack_Base/MI_Tex.uasset"),
-        include_bytes!("base/ModPack_Base/MI_Tex.uexp"),
+        include_bytes!("Mods/Maps/ModPack_Base/MI_Tex.uasset"),
+        include_bytes!("Mods/Maps/ModPack_Base/MI_Tex.uexp"),
         &[],
     ),
     (
         "MI_ExampleMat",
-        include_bytes!("base/ModPack_Base/MI_ExampleMat.uasset"),
-        include_bytes!("base/ModPack_Base/MI_ExampleMat.uexp"),
+        include_bytes!("Mods/Maps/ModPack_Base/MI_ExampleMat.uasset"),
+        include_bytes!("Mods/Maps/ModPack_Base/MI_ExampleMat.uexp"),
         &[],
     ),
     (
         "MI_StarterGate",
-        include_bytes!("base/ModPack_Base/MI_StarterGate.uasset"),
-        include_bytes!("base/ModPack_Base/MI_StarterGate.uexp"),
+        include_bytes!("Mods/Maps/ModPack_Base/MI_StarterGate.uasset"),
+        include_bytes!("Mods/Maps/ModPack_Base/MI_StarterGate.uexp"),
         &[],
     ),
     (
         "T_StarterGate",
-        include_bytes!("base/ModPack_Base/T_StarterGate.uasset"),
-        include_bytes!("base/ModPack_Base/T_StarterGate.uexp"),
+        include_bytes!("Mods/Maps/ModPack_Base/T_StarterGate.uasset"),
+        include_bytes!("Mods/Maps/ModPack_Base/T_StarterGate.uexp"),
         &[],
     ),
     (
         "T_Debug",
-        include_bytes!("base/ModPack_Base/T_Debug.uasset"),
-        include_bytes!("base/ModPack_Base/T_Debug.uexp"),
+        include_bytes!("Mods/Maps/ModPack_Base/T_Debug.uasset"),
+        include_bytes!("Mods/Maps/ModPack_Base/T_Debug.uexp"),
         &[],
     ),
     (
         "BP_Hazard",
-        include_bytes!("base/ModPack_Base/BP_Hazard.uasset"),
-        include_bytes!("base/ModPack_Base/BP_Hazard.uexp"),
+        include_bytes!("Mods/Maps/ModPack_Base/BP_Hazard.uasset"),
+        include_bytes!("Mods/Maps/ModPack_Base/BP_Hazard.uexp"),
         &[],
     ),
     (
         "BP_SafeZone",
-        include_bytes!("base/ModPack_Base/BP_SafeZone.uasset"),
-        include_bytes!("base/ModPack_Base/BP_SafeZone.uexp"),
+        include_bytes!("Mods/Maps/ModPack_Base/BP_SafeZone.uasset"),
+        include_bytes!("Mods/Maps/ModPack_Base/BP_SafeZone.uexp"),
         &[],
     ),
     (
         "M_HazMat",
-        include_bytes!("base/ModPack_Base/M_HazMat.uasset"),
-        include_bytes!("base/ModPack_Base/M_HazMat.uexp"),
+        include_bytes!("Mods/Maps/ModPack_Base/M_HazMat.uasset"),
+        include_bytes!("Mods/Maps/ModPack_Base/M_HazMat.uexp"),
         &[],
     ),
     (
         "SM_ExampleBox",
-        include_bytes!("base/ModPack_Base/SM_ExampleBox.uasset"),
-        include_bytes!("base/ModPack_Base/SM_ExampleBox.uexp"),
-        include_bytes!("base/ModPack_Base/SM_ExampleBox.ubulk"),
+        include_bytes!("Mods/Maps/ModPack_Base/SM_ExampleBox.uasset"),
+        include_bytes!("Mods/Maps/ModPack_Base/SM_ExampleBox.uexp"),
+        include_bytes!("Mods/Maps/ModPack_Base/SM_ExampleBox.ubulk"),
     ),
 ];
 
-const MISE_UMAP: &[u8] = include_bytes!("base/ModPack_Base.umap");
-const MISE_UEXP: &[u8] = include_bytes!("base/ModPack_Base.uexp");
+const MISE_UMAP: &[u8] = include_bytes!("Mods/Maps/ModPack_Base.umap");
+const MISE_UEXP: &[u8] = include_bytes!("Mods/Maps/ModPack_Base.uexp");
 
 // Triangulation density control. Higher = more sparse. UE units.
 const FACE_VERTEX_SPACING: f64 = 256.0;
@@ -1351,6 +1353,8 @@ fn main() {
                 .unwrap_or_else(|_| panic!("failed to write: {}", ubulk_path));
         }
     }
+
+    game_preset::pak_add(&mut pak, "pseudochef testing");
 
     let mut writer = pak.write_index().expect("failed to write pak file");
     let bytes_written = writer

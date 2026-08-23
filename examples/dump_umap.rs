@@ -3,8 +3,8 @@ use std::io::Cursor;
 use unreal_asset::exports::ExportBaseTrait;
 use unreal_asset::types::PackageIndex;
 
-const UMAP: &[u8] = include_bytes!("../src/base/ModPack_Base.umap");
-const UEXP: &[u8] = include_bytes!("../src/base/ModPack_Base.uexp");
+const UMAP: &[u8] = include_bytes!("../src/Mods/Maps/ModPack_Base.umap");
+const UEXP: &[u8] = include_bytes!("../src/Mods/Maps/ModPack_Base.uexp");
 
 fn main() {
     let umap = unreal_asset::Asset::new(
