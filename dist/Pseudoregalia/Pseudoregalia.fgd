@@ -8,9 +8,7 @@
 World entity. Contains information about this map.
 
 "
-[
-    display_name(string) : "Title text that appears when the player loads in." : "null zone"
-]
+[]
 
 @PointClass = info_preset : "
 
@@ -18,6 +16,7 @@ Game preset details. This information is passed to the PseudoMenu mod so it know
 
 "
 [
+    title(string) : "Name of game preset."
     author(string) : "Your name."
     start(target_destination) : "Where the player first spawns."
     upgrades(flags) = [
