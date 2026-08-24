@@ -13,6 +13,25 @@ pub struct PitchYawRoll {
     pub roll: f64,
 }
 
+pub fn unwrap_flags<S: AsRef<str>>(opt: Option<S>) -> Vec<bool> {
+    let mut result = vec![];
+    for _ in 0..32 {
+        result.push(false);
+    }
+    let Some(s) = opt else {
+        return result;
+    };
+    let Ok(n) = u32::from_str_radix(s.as_ref(), 10) else {
+        return result;
+    };
+    let mut mask: u32 = 1;
+    for v in result.iter_mut() {
+        *v = (mask & n) != 0;
+        mask <<= 1;
+    }
+    result
+}
+
 /// e.g. "1" -> true
 pub fn unwrap_bool<S: AsRef<str>>(opt: Option<S>) -> bool {
     let Some(s) = opt else {

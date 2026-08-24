@@ -1,6 +1,6 @@
 use glam::{DQuat, DVec3};
 use shalrath::parser::repr::parse_map;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fs::{File, read_to_string};
 use std::io::{Read, Seek, Write};
 use std::path::Path;
@@ -1068,6 +1068,23 @@ fn main() {
                     switches.push((idx, target.clone()));
                 }
             }
+            "info_preset" => {
+                let title = tb::unwrap_string_or(props.get("title"), &map_name);
+                let author = tb::unwrap_string_or(props.get("author"), "unknown");
+                let start = tb::unwrap_string_or(props.get("start"), "gameStart");
+                let upgrades = upgrade_data::parse_flags(&tb::unwrap_flags(props.get("upgrades")));
+                game_preset::pak_add(
+                    &mut pak,
+                    &GamePreset {
+                        title: title.to_string(),
+                        author: author.to_string(),
+                        level_name: map_name.to_string(),
+                        player_start_tag: start.to_string(),
+                        upgrades,
+                        level_display_names: HashMap::new(),
+                    },
+                );
+            }
             _ => {}
         };
     }
@@ -1354,18 +1371,6 @@ fn main() {
                 .unwrap_or_else(|_| panic!("failed to write: {}", ubulk_path));
         }
     }
-
-    game_preset::pak_add(
-        &mut pak,
-        &GamePreset {
-            title: "pseudochef testing".to_string(),
-            author: "TODO".to_string(),
-            level_name: "TODO".to_string(),
-            player_start_tag: "TODO".to_string(),
-            upgrades: HashSet::new(),
-            level_display_names: HashMap::new(),
-        },
-    );
 
     let mut writer = pak.write_index().expect("failed to write pak file");
     let bytes_written = writer

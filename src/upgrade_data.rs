@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use unreal_asset::exports::ExportNormalTrait;
 use unreal_asset::types::PackageIndex;
 
@@ -67,6 +69,47 @@ pub fn set_upgrade_data<'a>(
             //obj_prop.value = value;
         }
     }
+}
+
+pub fn parse_flags(flags: &[bool]) -> HashSet<String> {
+    const UPGRADE_NAMES: &[&str] = &[
+        "attack",
+        "airKick",
+        "slide",
+        "plunge",
+        "wallRide",
+        "light",
+        "projectile",
+        "sprint",
+        "powerBoost",
+        "SlideJump",
+        "guard",
+        "chargeAttack",
+        "map",
+        "extraKick",
+        "damageBoost",
+        "magicPiece",
+        "magicHaste",
+        "HealBoost",
+        "airRecovery",
+        "mobileHeal",
+        "healthPiece",
+        "outfitPro",
+        "outfitShoujo",
+        "outfitKnight",
+        "outfitPast",
+        "outfitJam",
+        "outfitFaith",
+        "outfitClassy",
+        "outfitSweater",
+    ];
+
+    flags
+        .iter()
+        .zip(UPGRADE_NAMES.iter())
+        .filter(|(enabled, _)| **enabled)
+        .map(|(_, upgrade_name)| upgrade_name.to_string())
+        .collect()
 }
 
 pub fn get_upgrade_data(key: &str) -> UpgradeData {
