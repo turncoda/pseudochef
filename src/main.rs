@@ -7,7 +7,7 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 use unreal_asset::exports::ExportBaseTrait;
 use unreal_asset::exports::ExportNormalTrait;
-use unreal_asset::types::PackageIndex;
+use unreal_asset::types::{FName, PackageIndex};
 
 mod texture_collection;
 use texture_collection::TextureCollection;
@@ -202,6 +202,22 @@ fn find_float_property_mut<'a>(
     result
 }
 
+fn find_str_property_mut<'a>(
+    export: &'a mut unreal_asset::Export<PackageIndex>,
+    name: &str,
+) -> Option<&'a mut unreal_asset::properties::str_property::StrProperty> {
+    let mut result = None;
+    let props = &mut export.get_normal_export_mut().unwrap().properties;
+    for prop in props {
+        if let unreal_asset::properties::Property::StrProperty(str_prop) = prop
+            && str_prop.name.get_content(|content| content == name)
+        {
+            result = Some(str_prop);
+        }
+    }
+    result
+}
+
 fn find_vec_property_mut<'a>(
     export: &'a mut unreal_asset::Export<PackageIndex>,
     name: &str,
@@ -337,6 +353,22 @@ fn find_array_property_mut<'a>(
             && arr_prop.name.get_content(|content| content == name)
         {
             result = Some(arr_prop);
+        }
+    }
+    result
+}
+
+fn find_soft_obj_property_mut<'a>(
+    export: &'a mut unreal_asset::Export<PackageIndex>,
+    name: &str,
+) -> Option<&'a mut unreal_asset::properties::object_property::SoftObjectProperty> {
+    let mut result = None;
+    let props = &mut export.get_normal_export_mut().unwrap().properties;
+    for prop in props {
+        if let unreal_asset::properties::Property::SoftObjectProperty(obj_prop) = prop
+            && obj_prop.name.get_content(|content| content == name)
+        {
+            result = Some(obj_prop);
         }
     }
     result
@@ -618,6 +650,34 @@ fn add_player_start<C: Read + Seek>(
     idx
 }
 
+fn add_transition_zone_actor<C: Read + Seek>(
+    umap: &mut unreal_asset::Asset<C>,
+    origin: DVec3,
+    extents: DVec3,
+    level: &str,
+    start: &str,
+) -> PackageIndex {
+    let idx = find_export(umap, &[with_name("BP_TransitionZone_C")]).unwrap();
+    let idx = deep_clone_export(umap, idx);
+    add_actor_to_level(umap, idx);
+
+    let package_name = umap.add_fname(&format!("/Game/Mods/Maps/{}", level));
+    let asset_name = umap.add_fname(level);
+
+    let export = umap.get_export_mut(idx).unwrap();
+    set_str_property(export, "startTag", start);
+    set_soft_obj_property(export, "Level", package_name, asset_name);
+
+    let box_collider = get_linked_export_mut(umap, idx, "Box").unwrap();
+    set_extents(box_collider, extents);
+    set_location(box_collider, DVec3::default());
+
+    let root = get_linked_export_mut(umap, idx, "DefaultSceneRoot").unwrap();
+    set_location(root, origin);
+
+    idx
+}
+
 fn add_safe_zone_actor<C: Read + Seek>(
     umap: &mut unreal_asset::Asset<C>,
     origin: DVec3,
@@ -698,6 +758,25 @@ fn set_name_property(
     prop.value = value;
 }
 
+fn set_soft_obj_property(
+    export: &mut unreal_asset::Export<PackageIndex>,
+    object_name: &str,
+    package_name: FName,
+    asset_name: FName,
+) {
+    let base_export = export.get_base_export_mut();
+    let export_name = base_export.object_name.get_owned_content();
+    // this error message should really be in the function.
+    let prop = find_soft_obj_property_mut(export, object_name).unwrap_or_else(|| {
+        panic!(
+            "couldn't find soft object property \"{}\" in {}",
+            object_name, export_name
+        )
+    });
+    prop.value.asset_path.package_name = Some(package_name);
+    prop.value.asset_path.asset_name = asset_name;
+}
+
 fn set_obj_property(
     export: &mut unreal_asset::Export<PackageIndex>,
     object_name: &str,
@@ -755,6 +834,12 @@ fn set_float_property(export: &mut unreal_asset::Export<PackageIndex>, name: &st
     let prop =
         find_float_property_mut(export, name).expect(&format!("couldn't find property: {}", name));
     prop.value.0 = value;
+}
+
+fn set_str_property(export: &mut unreal_asset::Export<PackageIndex>, name: &str, value: &str) {
+    let prop =
+        find_str_property_mut(export, name).expect(&format!("couldn't find property: {}", name));
+    prop.value = Some(value.to_string());
 }
 
 fn set_vec_property(export: &mut unreal_asset::Export<PackageIndex>, name: &str, value: DVec3) {
@@ -958,6 +1043,21 @@ fn main() {
                             .unwrap();
                     let idx = add_static_mesh_import(&mut umap, &abs_path);
                     add_static_mesh_actor(&mut umap, idx, origin);
+                }
+            }
+            "trigger_transition_zone" => {
+                let level = tb::unwrap_string_or(props.get("level"), "unspecified");
+                let start = tb::unwrap_string_or(props.get("start"), "gameStart");
+                for brush in ent.brushes.0.into_iter() {
+                    let brush = tb2ue::brush(brush);
+                    // TODO this should really get the min bounding cuboid, not the AABB. In other
+                    // words, allow the bounding box to rotate, since UE box colliders are allowed
+                    // to rotate. Otherwise this results in surprising behavior if the user assumes
+                    // they can rotate the transition zone bounding box (they can, but the AABB will
+                    // just add more - potentially undesirable - collidable volume).
+                    let AxisAlignedBoundingBox { origin, extents } = get_aabb(&brush);
+                    let _ = add_transition_zone_actor(&mut umap, origin, extents, level, start);
+                    //transition_zones.push((idx, props.get("target").map(|s| s.to_string())));
                 }
             }
             "trigger_safe_zone" => {
@@ -1295,6 +1395,7 @@ fn main() {
             find_export(&umap, &[with_name("BP_BounceHitter_C")]).unwrap(),
             find_export(&umap, &[with_name("BP_TrialGate_C")]).unwrap(),
             find_export(&umap, &[with_name("BP_TimeTrial_C")]).unwrap(),
+            find_export(&umap, &[with_name("BP_TransitionZone_C")]).unwrap(),
             find_export(&umap, &[with_name("PlayerStart")]).unwrap(),
             find_original_static_mesh_actor(&umap),
             find_gate_static_mesh_actor(&umap),

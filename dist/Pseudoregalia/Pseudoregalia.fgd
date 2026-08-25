@@ -175,6 +175,20 @@ Due to UE collision limitations, arbitrary brush shapes are not supported. The a
     target(target_destination) : "Target (respawn_anchor)"
 ]
 
+// === BP_TransitionZone ======================================================
+//   * Uses the axis-aligned bounding box of the brush.
+// ============================================================================
+@SolidClass = trigger_transition_zone : "
+
+Upon collision, player travels to another level, spawning at the specified player_start in the other level.
+
+"
+[
+    level(string) : "Name of other level"
+    start(string) : "info_player_start"
+    walk_out(boolean) : "You walk out the other side" : 1
+]
+
 // === Respawn anchor (custom) ================================================
 //   * Part of another custom actor: BP_SafeZone
 // ============================================================================
