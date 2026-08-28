@@ -2,13 +2,16 @@
 //! Largely written using Claude Code with access to Unreal Engine 5.1 source code.
 
 use crate::texture_collection::TextureCollection;
-use glam::{DMat3, DVec2, DVec3, Vec3};
+use glam::{DMat3, DQuat, DVec2, DVec3, Vec3};
 use itertools::Itertools;
 use spade::{DelaunayTriangulation, Point2, Triangulation};
 use std::collections::HashMap;
 
 fn dvec3(p: shalrath::repr::Point) -> DVec3 {
     DVec3::new(p.x as f64, p.y as f64, p.z as f64)
+}
+fn approx_eq(a: f64, b: f64, epsilon: f64) -> bool {
+    (a - b).abs() <= epsilon
 }
 fn calculate_normal(plane: &shalrath::repr::TrianglePlane) -> DVec3 {
     let p0 = dvec3(plane.v0);
@@ -90,9 +93,85 @@ fn compute_vertices(brush: &shalrath::repr::Brush) -> Vec<Vec<DVec3>> {
     vertices
 }
 
+pub struct OrientedBoundingBox {
+    pub origin: DVec3,
+    pub extents: DVec3,
+    pub rotation: DQuat,
+}
+
 pub struct AxisAlignedBoundingBox {
     pub origin: DVec3,
     pub extents: DVec3,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Error {
+    pub msg: String,
+}
+
+impl Error {
+    fn new(msg: &str) -> Self {
+        Self {
+            msg: msg.to_string(),
+        }
+    }
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.msg)
+    }
+}
+
+impl std::error::Error for Error {}
+
+pub fn get_obb(brush: &shalrath::repr::Brush) -> Result<OrientedBoundingBox, Error> {
+    // Assert all faces are orthogonal.
+    let planes: Vec<_> = brush.0.iter().map(|plane| plane.plane).collect();
+    if planes.len() != 6 {
+        return Err(Error::new("does not have exactly 6 planes"));
+    }
+    let normals: Vec<_> = planes.iter().map(calculate_normal).collect();
+    let mut vertices = vec![];
+    let mut min_quat = DQuat::default();
+    for c in planes.iter().zip(normals.iter()).combinations(3) {
+        let (p0, n0) = c[0];
+        let (p1, n1) = c[1];
+        let (p2, n2) = c[2];
+        let u0 = n0.normalize();
+        let u1 = n1.normalize();
+        let u2 = n2.normalize();
+        // Using Cramer's rule, determine if the planes are orthogonal.
+        let det = DMat3::from_cols(u0, u1, u2).determinant();
+        if approx_eq(det, 1.0, 1e-2) || approx_eq(det, -1.0, 1e-2) {
+            // TODO find the normal with the highest Z value, calculate rotation arc, then find 2d
+            // rotation arc on the XY-plane. keep the quaternion with the lowest magnitude.
+            let x0 = dvec3(p0.v0);
+            let x1 = dvec3(p1.v0);
+            let x2 = dvec3(p2.v0);
+            let c0 = x0.dot(u0) * u1.cross(u2);
+            let c1 = x1.dot(u1) * u2.cross(u0);
+            let c2 = x2.dot(u2) * u0.cross(u1);
+            let vertex = det * (c0 + c1 + c2);
+            vertices.push(vertex);
+        }
+    }
+    if vertices.len() < 8 {
+        return Err(Error::new("has non-orthogonal faces"));
+    }
+    dbg!(vertices);
+
+    // TODO compute_vertices, apply_rotation, caculate extents, calculate origin
+
+    let origin = DVec3::default();
+    let extents = DVec3::default();
+    let rotation = DQuat::default();
+    // Assert planes are orthogonal
+    Ok(OrientedBoundingBox {
+        origin,
+        extents,
+        rotation,
+    })
 }
 
 pub fn get_aabb(brush: &shalrath::repr::Brush) -> AxisAlignedBoundingBox {

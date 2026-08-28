@@ -13,7 +13,9 @@ mod texture_collection;
 use texture_collection::TextureCollection;
 
 mod brush_to_mesh;
-use brush_to_mesh::{AxisAlignedBoundingBox, convert_to_mesh, get_aabb};
+use brush_to_mesh::{
+    AxisAlignedBoundingBox, OrientedBoundingBox, convert_to_mesh, get_aabb, get_obb,
+};
 
 mod unreal_asset_ext;
 use unreal_asset_ext::{deep_clone_export, deep_delete_export};
@@ -1050,6 +1052,10 @@ fn main() {
                 let start = tb::unwrap_string_or(props.get("start"), "gameStart");
                 for brush in ent.brushes.0.into_iter() {
                     let brush = tb2ue::brush(brush);
+                    let obb = get_obb(&brush).unwrap_or_else(|err| {
+                        eprintln!("ERROR: trigger_transition_zone: {}", err);
+                        std::process::exit(1);
+                    });
                     // TODO this should really get the min bounding cuboid, not the AABB. In other
                     // words, allow the bounding box to rotate, since UE box colliders are allowed
                     // to rotate. Otherwise this results in surprising behavior if the user assumes
