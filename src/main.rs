@@ -13,9 +13,7 @@ mod texture_collection;
 use texture_collection::TextureCollection;
 
 mod brush_to_mesh;
-use brush_to_mesh::{
-    AxisAlignedBoundingBox, OrientedBoundingBox, convert_to_mesh, get_aabb, get_obb,
-};
+use brush_to_mesh::{OrientedBoundingBox, convert_to_mesh, get_obb};
 
 mod unreal_asset_ext;
 use unreal_asset_ext::{deep_clone_export, deep_delete_export};
@@ -654,8 +652,7 @@ fn add_player_start<C: Read + Seek>(
 
 fn add_transition_zone_actor<C: Read + Seek>(
     umap: &mut unreal_asset::Asset<C>,
-    origin: DVec3,
-    extents: DVec3,
+    obb: &OrientedBoundingBox,
     level: &str,
     start: &str,
 ) -> PackageIndex {
@@ -671,29 +668,30 @@ fn add_transition_zone_actor<C: Read + Seek>(
     set_soft_obj_property(export, "Level", package_name, asset_name);
 
     let box_collider = get_linked_export_mut(umap, idx, "Box").unwrap();
-    set_extents(box_collider, extents);
+    set_extents(box_collider, obb.extents);
     set_location(box_collider, DVec3::default());
 
     let root = get_linked_export_mut(umap, idx, "DefaultSceneRoot").unwrap();
-    set_location(root, origin);
+    set_location(root, obb.origin);
+    set_rotation(root, ue::PitchYawRoll::from(obb.rotation));
 
     idx
 }
 
 fn add_safe_zone_actor<C: Read + Seek>(
     umap: &mut unreal_asset::Asset<C>,
-    origin: DVec3,
-    extents: DVec3,
+    obb: &OrientedBoundingBox,
 ) -> PackageIndex {
     let idx = find_export(umap, &[with_name("BP_SafeZone_C")]).unwrap();
     let idx = deep_clone_export(umap, idx);
     add_actor_to_level(umap, idx);
 
     let box_collider = get_linked_export_mut(umap, idx, "Box").unwrap();
-    set_extents(box_collider, extents);
+    set_extents(box_collider, obb.extents);
 
     let root = get_linked_export_mut(umap, idx, "DefaultSceneRoot").unwrap();
-    set_location(root, origin);
+    set_location(root, obb.origin);
+    set_rotation(root, ue::PitchYawRoll::from(obb.rotation));
 
     idx
 }
@@ -1053,29 +1051,20 @@ fn main() {
                 for brush in ent.brushes.0.into_iter() {
                     let brush = tb2ue::brush(brush);
                     let obb = get_obb(&brush).unwrap_or_else(|err| {
-                        eprintln!("ERROR: trigger_transition_zone: {}", err);
+                        eprintln!("ERROR: trigger_transition_zone must be a box: {}", err);
                         std::process::exit(1);
                     });
-                    // TODO this should really get the min bounding cuboid, not the AABB. In other
-                    // words, allow the bounding box to rotate, since UE box colliders are allowed
-                    // to rotate. Otherwise this results in surprising behavior if the user assumes
-                    // they can rotate the transition zone bounding box (they can, but the AABB will
-                    // just add more - potentially undesirable - collidable volume).
-                    let AxisAlignedBoundingBox { origin, extents } = get_aabb(&brush);
-                    let _ = add_transition_zone_actor(&mut umap, origin, extents, level, start);
-                    //transition_zones.push((idx, props.get("target").map(|s| s.to_string())));
+                    let _ = add_transition_zone_actor(&mut umap, &obb, level, start);
                 }
             }
             "trigger_safe_zone" => {
                 for brush in ent.brushes.0.into_iter() {
                     let brush = tb2ue::brush(brush);
-                    // TODO this should really get the min bounding cuboid, not the AABB. In other
-                    // words, allow the bounding box to rotate, since UE box colliders are allowed
-                    // to rotate. Otherwise this results in surprising behavior if the user assumes
-                    // they can rotate the safe zone bounding box (they can, but the AABB will just
-                    // add more - potentially undesirable - collidable volume).
-                    let AxisAlignedBoundingBox { origin, extents } = get_aabb(&brush);
-                    let idx = add_safe_zone_actor(&mut umap, origin, extents);
+                    let obb = get_obb(&brush).unwrap_or_else(|err| {
+                        eprintln!("ERROR: trigger_safe_zone must be a box: {}", err);
+                        std::process::exit(1);
+                    });
+                    let idx = add_safe_zone_actor(&mut umap, &obb);
                     safe_zones.push((idx, props.get("target").map(|s| s.to_string())));
                 }
             }

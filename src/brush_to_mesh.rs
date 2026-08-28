@@ -2,8 +2,9 @@
 //! Largely written using Claude Code with access to Unreal Engine 5.1 source code.
 
 use crate::texture_collection::TextureCollection;
-use glam::{DMat3, DQuat, DVec2, DVec3, Vec3};
+use glam::{DMat3, DQuat, DVec2, DVec3, Vec3, Vec3Swizzles};
 use itertools::Itertools;
+use ordered_float::OrderedFloat;
 use spade::{DelaunayTriangulation, Point2, Triangulation};
 use std::collections::HashMap;
 
@@ -20,6 +21,19 @@ fn calculate_normal(plane: &shalrath::repr::TrianglePlane) -> DVec3 {
     let a = p2 - p0;
     let b = p1 - p0;
     a.cross(b)
+}
+fn non_zero_components(v: &DVec3, epsilon: f64) -> usize {
+    let mut n = 0;
+    if v.x.abs() > epsilon {
+        n += 1;
+    }
+    if v.y.abs() > epsilon {
+        n += 1;
+    }
+    if v.z.abs() > epsilon {
+        n += 1;
+    }
+    n
 }
 
 /// Assumption: input brush is convex in a left-handed (UE) coordinate system.
@@ -93,15 +107,11 @@ fn compute_vertices(brush: &shalrath::repr::Brush) -> Vec<Vec<DVec3>> {
     vertices
 }
 
+#[derive(Debug)]
 pub struct OrientedBoundingBox {
     pub origin: DVec3,
     pub extents: DVec3,
     pub rotation: DQuat,
-}
-
-pub struct AxisAlignedBoundingBox {
-    pub origin: DVec3,
-    pub extents: DVec3,
 }
 
 #[derive(Debug, PartialEq)]
@@ -133,7 +143,7 @@ pub fn get_obb(brush: &shalrath::repr::Brush) -> Result<OrientedBoundingBox, Err
     }
     let normals: Vec<_> = planes.iter().map(calculate_normal).collect();
     let mut vertices = vec![];
-    let mut min_quat = DQuat::default();
+    let mut quat_candidates = vec![];
     for c in planes.iter().zip(normals.iter()).combinations(3) {
         let (p0, n0) = c[0];
         let (p1, n1) = c[1];
@@ -143,9 +153,34 @@ pub fn get_obb(brush: &shalrath::repr::Brush) -> Result<OrientedBoundingBox, Err
         let u2 = n2.normalize();
         // Using Cramer's rule, determine if the planes are orthogonal.
         let det = DMat3::from_cols(u0, u1, u2).determinant();
-        if approx_eq(det, 1.0, 1e-2) || approx_eq(det, -1.0, 1e-2) {
+        const DET_EPSILON: f64 = 1e-3;
+        if approx_eq(det, 1.0, DET_EPSILON) || approx_eq(det, -1.0, DET_EPSILON) {
+            const Z_AXIS: DVec3 = DVec3::new(0.0, 0.0, 1.0);
+            const Y_AXIS: DVec2 = DVec2::new(0.0, 1.0);
+            const SKEW_EPSILON: f64 = 1e-2;
             // TODO find the normal with the highest Z value, calculate rotation arc, then find 2d
             // rotation arc on the XY-plane. keep the quaternion with the lowest magnitude.
+            let axes = vec![u0, u1, u2];
+            let &z_candidate = axes
+                .iter()
+                .max_by_key(|u| OrderedFloat::from(u.z.abs()))
+                .unwrap();
+            let z_rot = DQuat::from_rotation_arc_colinear(z_candidate, Z_AXIS);
+            let axes: Vec<DVec3> = axes.iter().map(|u| z_rot * *u).collect();
+            let &y_candidate = axes
+                .iter()
+                .max_by_key(|u| OrderedFloat::from(u.y.abs()))
+                .unwrap();
+            let y_rot = DQuat::from_rotation_arc_2d(y_candidate.xy(), Y_AXIS);
+            let axes: Vec<DVec3> = axes.iter().map(|u| y_rot * *u).collect();
+            let skew_check: Vec<(&DVec3, usize)> = axes
+                .iter()
+                .map(|u| (u, non_zero_components(u, SKEW_EPSILON)))
+                .collect();
+            assert!(skew_check.iter().all(|(_, n)| *n == 1), "{:#?}", skew_check);
+            quat_candidates.push(y_rot * z_rot);
+
+            // Compute vertex and save.
             let x0 = dvec3(p0.v0);
             let x1 = dvec3(p1.v0);
             let x2 = dvec3(p2.v0);
@@ -159,32 +194,21 @@ pub fn get_obb(brush: &shalrath::repr::Brush) -> Result<OrientedBoundingBox, Err
     if vertices.len() < 8 {
         return Err(Error::new("has non-orthogonal faces"));
     }
-    dbg!(vertices);
+    let origin: DVec3 = vertices.iter().sum::<DVec3>() / vertices.len() as f64;
+    let vertices: Vec<DVec3> = vertices.iter().map(|v| v - origin).collect();
+    let inverse_rotation = quat_candidates
+        .iter()
+        .min_by_key(|quat| OrderedFloat::from(quat.length()))
+        .unwrap();
+    let vertices: Vec<DVec3> = vertices.iter().map(|v| inverse_rotation * *v).collect();
+    let extents = vertices.iter().fold(DVec3::MIN, |acc, e| acc.max(*e));
+    dbg!(&extents);
 
-    // TODO compute_vertices, apply_rotation, caculate extents, calculate origin
-
-    let origin = DVec3::default();
-    let extents = DVec3::default();
-    let rotation = DQuat::default();
-    // Assert planes are orthogonal
     Ok(OrientedBoundingBox {
         origin,
         extents,
-        rotation,
+        rotation: inverse_rotation.inverse(),
     })
-}
-
-pub fn get_aabb(brush: &shalrath::repr::Brush) -> AxisAlignedBoundingBox {
-    let vertices = compute_vertices(brush);
-    let mut min = DVec3::new(f64::INFINITY, f64::INFINITY, f64::INFINITY);
-    let mut max = DVec3::new(f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
-    vertices.into_iter().flatten().for_each(|v| {
-        min = min.min(v);
-        max = max.max(v);
-    });
-    let origin = (max + min) / 2.0;
-    let extents = (max - min) / 2.0;
-    AxisAlignedBoundingBox { origin, extents }
 }
 
 fn derive_uvs(
