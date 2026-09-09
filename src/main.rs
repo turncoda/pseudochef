@@ -1,5 +1,6 @@
 use clap::Parser;
 use glam::{DQuat, DVec3};
+use log::{error, info, warn};
 use shalrath::parser::repr::parse_map;
 use std::collections::HashMap;
 use std::fs::{File, read_to_string};
@@ -126,6 +127,9 @@ struct Args {
     /// Also write output .umap and .uexp files to project directory.
     #[arg(long, default_value_t = false)]
     also_unpak: bool,
+
+    #[command(flatten)]
+    verbosity: clap_verbosity_flag::Verbosity,
 }
 
 fn with_import<'a, C: Read + Seek>(
@@ -977,7 +981,7 @@ fn reroute_imports<C: Read + Seek>(umap: &mut unreal_asset::Asset<C>, src: &str,
         let fname = umap.add_fname(&patched_path);
         let import = &mut umap.imports[i];
         import.object_name = fname;
-        println!(
+        info!(
             "Rewrote import {}: '{}' -> '{}'",
             -((i + 1) as i32),
             orig_path,
@@ -988,6 +992,13 @@ fn reroute_imports<C: Read + Seek>(umap: &mut unreal_asset::Asset<C>, src: &str,
 
 fn main() {
     let args = Args::parse();
+
+    env_logger::Builder::new()
+        .format_target(false)
+        .format_timestamp(None)
+        .filter_level(args.verbosity.into())
+        .init();
+
     if args.in_path.is_dir() {
         panic!("directory input not yet supported");
     }
@@ -1070,7 +1081,7 @@ fn main() {
                 for brush in ent.brushes.0.into_iter() {
                     let brush = tb2ue::brush(brush);
                     let obb = get_obb(&brush).unwrap_or_else(|err| {
-                        eprintln!("ERROR: trigger_transition_zone must be a box: {}", err);
+                        error!("trigger_transition_zone must be a box: {}", err);
                         std::process::exit(1);
                     });
                     let _ = add_transition_zone_actor(&mut umap, &obb, level, start);
@@ -1080,7 +1091,7 @@ fn main() {
                 for brush in ent.brushes.0.into_iter() {
                     let brush = tb2ue::brush(brush);
                     let obb = get_obb(&brush).unwrap_or_else(|err| {
-                        eprintln!("ERROR: trigger_safe_zone must be a box: {}", err);
+                        error!("trigger_safe_zone must be a box: {}", err);
                         std::process::exit(1);
                     });
                     let idx = add_safe_zone_actor(&mut umap, &obb);
@@ -1142,18 +1153,15 @@ fn main() {
                 let idx = add_parent(&mut umap, origin);
                 if let Some(child) = props.get("child") {
                     if child_to_parent.contains_key(child) {
-                        eprintln!(
-                            "ERROR: multiple info_parent point to child tagged '{}'",
-                            child
-                        );
+                        error!("multiple info_parent point to child tagged '{}'", child);
                         panic!();
                     }
                     child_to_parent.insert(child.clone(), idx);
                 }
                 if let Some(dst) = props.get("destination") {
                     if parent_to_marker.contains_key(&idx) {
-                        eprintln!(
-                            "ERROR: info_parent points to multiple info_marker tagged '{}'",
+                        error!(
+                            "info_parent points to multiple info_marker tagged '{}'",
                             dst
                         );
                         panic!();
@@ -1203,27 +1211,27 @@ fn main() {
         };
     }
     let elapsed = start.elapsed();
-    println!("World brushes: {}", num_world_brushes);
-    println!("Hazard zone brushes: {}", num_hazard_brushes);
+    info!("World brushes: {}", num_world_brushes);
+    info!("Hazard zone brushes: {}", num_hazard_brushes);
     println!(
         "Generated level in {}.",
         humantime::format_duration(Duration::from_millis(elapsed.as_millis() as u64))
     );
 
-    println!("Linking actors...");
+    info!("Linking actors...");
 
     // Link save points to player starts
     for (save_idx, save_target) in save_points {
         let save_export = umap.get_export_mut(save_idx).unwrap();
         let start_idx = if let Some(idx) = player_starts.get(&save_target) {
-            println!(
+            info!(
                 "save_point @{} -> player_start @{} ({})",
                 save_idx, idx.index, save_target
             );
             *idx
         } else {
-            println!(
-                "Warning: save_point @{} could not find player_start with tag: {}",
+            warn!(
+                "save_point @{} could not find player_start with tag: {}",
                 save_idx, save_target
             );
             PackageIndex::new(0)
@@ -1243,7 +1251,7 @@ fn main() {
         } else {
             (DVec3::default(), 0.0)
         };
-        println!(
+        info!(
             "safe_zone @{}: respawn_anchor w/ relative offset {}",
             idx, offset
         );
@@ -1258,7 +1266,7 @@ fn main() {
         let parent_location = get_location(&parent_root);
 
         let Some(child_idx) = tagged_static_mesh_actors.get(&child_tag) else {
-            println!("WARNING: couldn't find child with tag: {}", child_tag);
+            warn!("couldn't find child with tag: {}", child_tag);
             continue;
         };
 
@@ -1304,7 +1312,7 @@ fn main() {
         let parent_location = get_location(&parent_root);
 
         let Some(marker) = markers.get(&marker_tag) else {
-            println!("WARNING: couldn't find marker with tag: {}", marker_tag);
+            warn!("couldn't find marker with tag: {}", marker_tag);
             continue;
         };
 
@@ -1358,7 +1366,7 @@ fn main() {
     // Link switches to parents
     for (switch_idx, parent_tag) in switches {
         let Some(parent_idxs) = parents.get(&parent_tag) else {
-            println!("WARNING: couldn't find parent with tag: {}", parent_tag);
+            warn!("couldn't find parent with tag: {}", parent_tag);
             continue;
         };
 
@@ -1374,7 +1382,7 @@ fn main() {
             };
             obj_prop.value = *parent_idx;
             associated_actors.value.push(prop);
-            println!("func_switch @{} -> info_parent @{}", switch_idx, parent_idx);
+            info!("func_switch @{} -> info_parent @{}", switch_idx, parent_idx);
         }
 
         for parent_idx in parent_idxs {
@@ -1435,12 +1443,13 @@ fn main() {
 
     if args.also_unpak {
         let unpak_dir = project_dir.join("unpak");
-        std::fs::create_dir(&unpak_dir).unwrap();
+        std::fs::create_dir_all(&unpak_dir).unwrap();
         let map_name = map_name.to_string();
         let umap_path = unpak_dir.join(&map_name).with_extension("umap");
         let uexp_path = unpak_dir.join(&map_name).with_extension("uexp");
-        std::fs::write(umap_path, final_umap.get_ref()).unwrap();
-        std::fs::write(uexp_path, final_uexp.get_ref()).unwrap();
+        std::fs::write(&umap_path, final_umap.get_ref()).unwrap();
+        std::fs::write(&uexp_path, final_uexp.get_ref()).unwrap();
+        println!("(also-unpak) wrote to: {}", umap_path.to_string_lossy());
     }
 
     let umap_path = format!("Mods/Maps/{}.umap", map_name);
@@ -1451,7 +1460,7 @@ fn main() {
         .expect("failed to write uexp to pak");
 
     for (name, uasset_bytes, uexp_bytes, ubulk_bytes) in MISE_FILES {
-        println!("Rerouting imports in: {}", name);
+        info!("Rerouting imports in: {}", name);
         let mut uasset = unreal_asset::Asset::new(
             std::io::Cursor::new(uasset_bytes),
             Some(std::io::Cursor::new(uexp_bytes)),
@@ -1477,8 +1486,9 @@ fn main() {
             std::fs::create_dir_all(&unpak_assets_dir).unwrap();
             let uasset_path = unpak_assets_dir.join(name).with_extension("uasset");
             let uexp_path = unpak_assets_dir.join(name).with_extension("uexp");
-            std::fs::write(uasset_path, &uasset_bytes).unwrap();
-            std::fs::write(uexp_path, &uexp_bytes).unwrap();
+            std::fs::write(&uasset_path, &uasset_bytes).unwrap();
+            std::fs::write(&uexp_path, &uexp_bytes).unwrap();
+            println!("(also-unpak) wrote to: {}", uasset_path.to_string_lossy());
         }
 
         let uasset_path = format!("Mods/Maps/{}/{}.uasset", map_name, name);
@@ -1499,7 +1509,7 @@ fn main() {
         .stream_position()
         .expect("failed to seek in pak file");
     println!(
-        "wrote {} to \"{}\"",
+        "Wrote {} to \"{}\"",
         humansize::format_size(bytes_written, humansize::DECIMAL),
         args.out_path.to_string_lossy()
     );

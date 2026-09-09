@@ -2,6 +2,7 @@
 //! Largely written using Claude Code with access to Unreal Engine 5.1 source code.
 
 use crate::{find_export, find_import, with_name};
+use log::info;
 use std::collections::{HashMap, HashSet};
 use std::io::{Read, Seek};
 use std::sync::atomic::{AtomicI32, Ordering};
@@ -193,7 +194,7 @@ fn remove_actors_from_level<C: Read + Seek>(
             .get_base_export()
             .object_name
             .get_owned_content();
-        println!("Removed {}: {} from PersistentLevel", idx, name);
+        info!("Removed {}: {} from PersistentLevel", idx, name);
     }
 }
 
@@ -274,8 +275,10 @@ pub(crate) fn deep_delete_export<C: Read + Seek>(
             }
         }
     }
-    #[cfg(debug_assertions)]
-    println!("- (deleted {} more dependent exports)", _tombstone_count - 1);
+    info!(
+        "- (deleted {} more dependent exports)",
+        _tombstone_count - 1
+    );
 }
 
 #[cfg(test)]
