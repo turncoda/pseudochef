@@ -1,9 +1,9 @@
+use clap::Parser;
 use glam::{DQuat, DVec3};
 use shalrath::parser::repr::parse_map;
 use std::collections::HashMap;
 use std::fs::{File, read_to_string};
 use std::io::{Read, Seek, Write};
-use std::path::Path;
 use std::time::{Duration, Instant};
 use unreal_asset::exports::ExportBaseTrait;
 use unreal_asset::exports::ExportNormalTrait;
@@ -109,6 +109,19 @@ type UnrealExportConstraint<'a, C> = Box<
 struct Marker {
     origin: DVec3,
     quat: DQuat,
+}
+
+/// Convert Quake .map files into a .pak file that can be loaded into Pseudoregalia.
+#[derive(Parser, Debug)]
+#[command(version)]
+struct Args {
+    /// Path to an individual .map file or directory containing multiple .map files
+    #[arg(short)]
+    in_path: std::path::PathBuf,
+
+    /// Output .pak file name
+    #[arg(short)]
+    out_path: std::path::PathBuf,
 }
 
 fn with_import<'a, C: Read + Seek>(
@@ -970,13 +983,14 @@ fn reroute_imports<C: Read + Seek>(umap: &mut unreal_asset::Asset<C>, src: &str,
 }
 
 fn main() {
-    let args: Vec<String> = std::env::args().collect();
+    let args = Args::parse();
+    if args.in_path.is_dir() {
+        panic!("directory input not yet supported");
+    }
+    assert!(args.in_path.is_file(), "input must be file");
 
-    assert_eq!(args.len(), 3, "usage: pseudochef IN_MAP OUT_PAK");
-
-    let in_path = Path::new(&args[1]);
-    let map_name = in_path.file_stem().unwrap().to_string_lossy();
-    let map_contents = read_to_string(&args[1]).expect("failed to read map file");
+    let map_name = args.in_path.file_stem().unwrap().to_string_lossy();
+    let map_contents = read_to_string(&args.in_path).expect("failed to read map file");
 
     let (_, ast) = parse_map(&map_contents).expect("failed to parse map file");
 
@@ -991,7 +1005,7 @@ fn main() {
     let mut pak = repak::PakBuilder::new()
         .compression(vec![repak::Compression::Zlib])
         .writer(
-            File::create(&args[2]).expect("failed to open pak file for writing"),
+            File::create(&args.out_path).expect("failed to open pak file for writing"),
             repak::Version::V11,
             "../../../pseudoregalia/Content/".to_string(),
             None,
@@ -1475,6 +1489,6 @@ fn main() {
     println!(
         "wrote {} to \"{}\"",
         humansize::format_size(bytes_written, humansize::DECIMAL),
-        args[2]
+        args.out_path.to_string_lossy()
     );
 }

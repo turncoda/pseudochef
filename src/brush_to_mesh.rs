@@ -202,7 +202,6 @@ pub fn get_obb(brush: &shalrath::repr::Brush) -> Result<OrientedBoundingBox, Err
         .unwrap();
     let vertices: Vec<DVec3> = vertices.iter().map(|v| inverse_rotation * *v).collect();
     let extents = vertices.iter().fold(DVec3::MIN, |acc, e| acc.max(*e));
-    dbg!(&extents);
 
     Ok(OrientedBoundingBox {
         origin,
