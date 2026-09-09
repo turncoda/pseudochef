@@ -1,6 +1,6 @@
 use clap::Parser;
 use glam::{DQuat, DVec3};
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 use shalrath::parser::repr::parse_map;
 use std::collections::HashMap;
 use std::fs::{File, read_to_string};
@@ -981,7 +981,7 @@ fn reroute_imports<C: Read + Seek>(umap: &mut unreal_asset::Asset<C>, src: &str,
         let fname = umap.add_fname(&patched_path);
         let import = &mut umap.imports[i];
         import.object_name = fname;
-        info!(
+        debug!(
             "Rewrote import {}: '{}' -> '{}'",
             -((i + 1) as i32),
             orig_path,
@@ -1460,7 +1460,7 @@ fn main() {
         .expect("failed to write uexp to pak");
 
     for (name, uasset_bytes, uexp_bytes, ubulk_bytes) in MISE_FILES {
-        info!("Rerouting imports in: {}", name);
+        debug!("Rerouting imports in: {}", name);
         let mut uasset = unreal_asset::Asset::new(
             std::io::Cursor::new(uasset_bytes),
             Some(std::io::Cursor::new(uexp_bytes)),
