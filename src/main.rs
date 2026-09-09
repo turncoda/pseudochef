@@ -122,6 +122,10 @@ struct Args {
     /// Output .pak file name
     #[arg(short)]
     out_path: std::path::PathBuf,
+
+    /// Also write output .umap and .uexp files to project directory.
+    #[arg(long, default_value_t = false)]
+    also_unpak: bool,
 }
 
 fn with_import<'a, C: Read + Seek>(
@@ -989,6 +993,7 @@ fn main() {
     }
     assert!(args.in_path.is_file(), "input must be file");
 
+    let project_dir = args.in_path.parent().unwrap();
     let map_name = args.in_path.file_stem().unwrap().to_string_lossy();
     let map_contents = read_to_string(&args.in_path).expect("failed to read map file");
 
@@ -1428,10 +1433,14 @@ fn main() {
     umap.write_data(&mut final_umap, Some(&mut final_uexp))
         .expect("failed to serialize umap");
 
-    #[cfg(debug_assertions)]
-    {
-        std::fs::write("dbg.umap", final_umap.get_ref()).unwrap();
-        std::fs::write("dbg.uexp", final_uexp.get_ref()).unwrap();
+    if args.also_unpak {
+        let unpak_dir = project_dir.join("unpak");
+        std::fs::create_dir(&unpak_dir).unwrap();
+        let map_name = map_name.to_string();
+        let umap_path = unpak_dir.join(&map_name).with_extension("umap");
+        let uexp_path = unpak_dir.join(&map_name).with_extension("uexp");
+        std::fs::write(umap_path, final_umap.get_ref()).unwrap();
+        std::fs::write(uexp_path, final_uexp.get_ref()).unwrap();
     }
 
     let umap_path = format!("Mods/Maps/{}.umap", map_name);
@@ -1462,11 +1471,14 @@ fn main() {
             )
             .unwrap();
 
-        #[cfg(debug_assertions)]
-        {
-            std::fs::create_dir_all("dbg").unwrap();
-            std::fs::write(&format!("dbg/{}.uasset", name), &uasset_bytes).unwrap();
-            std::fs::write(&format!("dbg/{}.uexp", name), &uexp_bytes).unwrap();
+        if args.also_unpak {
+            let map_name = map_name.to_string();
+            let unpak_assets_dir = project_dir.join("unpak").join(map_name);
+            std::fs::create_dir_all(&unpak_assets_dir).unwrap();
+            let uasset_path = unpak_assets_dir.join(name).with_extension("uasset");
+            let uexp_path = unpak_assets_dir.join(name).with_extension("uexp");
+            std::fs::write(uasset_path, &uasset_bytes).unwrap();
+            std::fs::write(uexp_path, &uexp_bytes).unwrap();
         }
 
         let uasset_path = format!("Mods/Maps/{}/{}.uasset", map_name, name);
