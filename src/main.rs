@@ -5,6 +5,7 @@ use shalrath::parser::repr::parse_map;
 use std::collections::HashMap;
 use std::fs::{File, read_to_string};
 use std::io::{Read, Seek, Write};
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use unreal_asset::exports::ExportBaseTrait;
 use unreal_asset::exports::ExportNormalTrait;
@@ -990,7 +991,7 @@ fn reroute_imports<C: Read + Seek>(umap: &mut unreal_asset::Asset<C>, src: &str,
     }
 }
 
-fn main() {
+fn main() -> std::io::Result<()> {
     let args = Args::parse();
 
     env_logger::Builder::new()
@@ -999,509 +1000,569 @@ fn main() {
         .filter_level(args.verbosity.into())
         .init();
 
-    if args.in_path.is_dir() {
-        panic!("directory input not yet supported");
-    }
-    assert!(args.in_path.is_file(), "input must be file");
+    let (project_dir, in_file_paths) = if args.in_path.is_dir() {
+        let mut paths = vec![];
+        for ent in std::fs::read_dir(&args.in_path)? {
+            let path = ent?.path();
+            let Some(ext) = path.extension() else {
+                continue;
+            };
+            if ext == "map" {
+                paths.push(path);
+            }
+        }
+        (&args.in_path, paths)
+    } else if args.in_path.is_file() {
+        let Some(ext) = args.in_path.extension() else {
+            error!("Input file extension must be .map");
+            std::process::exit(1);
+        };
+        if ext != "map" {
+            error!("Input file extension must be .map");
+            std::process::exit(1);
+        }
+        (
+            &PathBuf::from(args.in_path.parent().unwrap()),
+            vec![args.in_path.clone()],
+        )
+    } else {
+        error!(
+            "Input file path is not a directory or a file: \"{}\"",
+            args.in_path.to_string_lossy()
+        );
+        std::process::exit(1);
+    };
 
-    let project_dir = args.in_path.parent().unwrap();
-    let map_name = args.in_path.file_stem().unwrap().to_string_lossy();
-    let map_contents = read_to_string(&args.in_path).expect("failed to read map file");
+    let project_name = if in_file_paths.len() == 1 {
+        let name = in_file_paths[0].file_stem().unwrap().to_string_lossy();
+        println!("Inferred project name from input map file: {}", name);
+        name
+    } else {
+        let name = project_dir.file_name().unwrap().to_string_lossy();
+        println!("Inferred project name from parent directory name: {}", name);
+        name
+    };
 
-    let (_, ast) = parse_map(&map_contents).expect("failed to parse map file");
-
-    let mut umap = unreal_asset::Asset::new(
-        std::io::Cursor::new(MISE_UMAP),
-        Some(std::io::Cursor::new(MISE_UEXP)),
-        unreal_asset::engine_version::EngineVersion::VER_UE5_1,
-        None,
-    )
-    .expect("failed to parse umap");
+    let out_pak_path = if args.out_path.is_dir() {
+        let out_pak_file_name = format!("{}_p.pak", project_name);
+        args.out_path.join(out_pak_file_name)
+    } else if let Some(ext) = args.out_path.extension()
+        && ext == "pak"
+    {
+        args.out_path
+    } else {
+        error!(
+            "Output path does not specify an existing directory or a .pak file path: \"{}\"",
+            args.out_path.to_string_lossy()
+        );
+        std::process::exit(1);
+    };
 
     let mut pak = repak::PakBuilder::new()
         .compression(vec![repak::Compression::Zlib])
         .writer(
-            File::create(&args.out_path).expect("failed to open pak file for writing"),
+            File::create(&out_pak_path)?,
             repak::Version::V11,
             "../../../pseudoregalia/Content/".to_string(),
             None,
         );
 
-    let mut texture_collection = TextureCollection::bundled();
+    for in_file_path in in_file_paths {
+        let map_name = in_file_path.file_stem().unwrap().to_string_lossy();
+        println!("Building map: {}", map_name);
 
-    for (&key, value) in texture_collection.iter_mut() {
-        let texture_path = format!("/Game/{}", key);
-        let material_path = pak_add_material(&mut pak, &texture_path, &map_name);
-        value.material_path = Some(material_path);
-    }
+        let map_contents = read_to_string(&in_file_path)?;
 
-    let mut num_world_brushes = 0;
-    let mut num_hazard_brushes = 0;
+        let (_, ast) = parse_map(&map_contents).expect("failed to parse map file");
 
-    let mut switches: Vec<(PackageIndex, String)> = Vec::new();
-    let mut save_points: Vec<(PackageIndex, String)> = Vec::new();
-    // TODO remove Option<>
-    let mut safe_zones: Vec<(PackageIndex, Option<String>)> = Vec::new();
-
-    let mut markers: HashMap<String, Marker> = HashMap::new();
-    let mut respawn_anchors: HashMap<String, (DVec3, f32)> = HashMap::new();
-    let mut parents: HashMap<String, Vec<PackageIndex>> = HashMap::new();
-    let mut player_starts: HashMap<String, PackageIndex> = HashMap::new();
-    let mut child_to_parent: HashMap<String, PackageIndex> = HashMap::new();
-    let mut parent_to_marker: HashMap<PackageIndex, String> = HashMap::new();
-    let mut tagged_static_mesh_actors: HashMap<String, PackageIndex> = HashMap::new();
-
-    let start = Instant::now();
-    for ent in ast.0 {
-        let props: HashMap<String, String> = ent
-            .properties
-            .0
-            .into_iter()
-            .map(|p| (p.key, p.value))
-            .collect();
-        let Some(classname) = props.get("classname") else {
-            continue;
-        };
-        match classname.as_ref() {
-            "worldspawn" | "func_group" => {
-                for brush in ent.brushes.0.into_iter() {
-                    let brush = tb2ue::brush(brush);
-                    num_world_brushes += 1;
-                    let name = format!("WorldBrush{}", num_world_brushes);
-                    let (abs_path, origin) =
-                        pak_add_brush(&mut pak, &brush, &map_name, &name, &texture_collection)
-                            .unwrap();
-                    let idx = add_static_mesh_import(&mut umap, &abs_path);
-                    add_static_mesh_actor(&mut umap, idx, origin);
-                }
-            }
-            "trigger_transition_zone" => {
-                let level = tb::unwrap_string_or(props.get("level"), "unspecified");
-                let start = tb::unwrap_string_or(props.get("start"), "gameStart");
-                for brush in ent.brushes.0.into_iter() {
-                    let brush = tb2ue::brush(brush);
-                    let obb = get_obb(&brush).unwrap_or_else(|err| {
-                        error!("trigger_transition_zone must be a box: {}", err);
-                        std::process::exit(1);
-                    });
-                    let _ = add_transition_zone_actor(&mut umap, &obb, level, start);
-                }
-            }
-            "trigger_safe_zone" => {
-                for brush in ent.brushes.0.into_iter() {
-                    let brush = tb2ue::brush(brush);
-                    let obb = get_obb(&brush).unwrap_or_else(|err| {
-                        error!("trigger_safe_zone must be a box: {}", err);
-                        std::process::exit(1);
-                    });
-                    let idx = add_safe_zone_actor(&mut umap, &obb);
-                    safe_zones.push((idx, props.get("target").map(|s| s.to_string())));
-                }
-            }
-            "trigger_hazard_zone" => {
-                for brush in ent.brushes.0.into_iter() {
-                    let brush = tb2ue::brush(brush);
-                    num_hazard_brushes += 1;
-                    let name = format!("HazardZoneBrush{}", num_hazard_brushes);
-                    let (abs_path, origin) =
-                        pak_add_brush(&mut pak, &brush, &map_name, &name, &texture_collection)
-                            .unwrap();
-                    let idx = add_static_mesh_import(&mut umap, &abs_path);
-                    add_hazard_actor(&mut umap, idx, origin);
-                }
-            }
-            "info_respawn_anchor" => {
-                let origin = tb2ue::point(tb::unwrap_vec3(props.get("origin")));
-                let rot = tb2ue::rot(tb::unwrap_yaw(props.get("angle")));
-                if let Some(tag) = props.get("tag") {
-                    respawn_anchors.insert(tag.to_string(), (origin, rot.yaw as f32));
-                }
-            }
-            "info_player_start" => {
-                let origin = tb2ue::point(tb::unwrap_vec3(props.get("origin")));
-                let rot = tb2ue::rot(tb::unwrap_yaw(props.get("angle")));
-                let tag = tb::unwrap_string_or(props.get("tag"), "gameStart");
-                let idx = add_player_start(&mut umap, origin, rot, tag);
-                player_starts.insert(tag.to_string(), idx);
-            }
-            "item_upgrade" => {
-                let origin = tb2ue::point(tb::unwrap_vec3(props.get("origin")));
-                let upgrade_name = tb::unwrap_string_or(props.get("upgrade"), "attack");
-                let quick_pickup = tb::unwrap_bool(props.get("quick_pickup"));
-                add_upgrade(&mut umap, origin, upgrade_name, quick_pickup);
-            }
-            "misc_jump_bubble" => {
-                let origin = tb2ue::point(tb::unwrap_vec3(props.get("origin")));
-                add_jump_bubble(&mut umap, origin);
-            }
-            "misc_save_point" => {
-                let origin = tb2ue::point(tb::unwrap_vec3(props.get("origin")));
-                let target = tb::unwrap_string_or(props.get("target"), "gameStart");
-                let idx = add_save_point(&mut umap, origin);
-                save_points.push((idx, target.to_string()));
-            }
-            "prop_gate" => {
-                let origin = tb2ue::point(tb::unwrap_vec3(props.get("origin")));
-                let rot = tb2ue::rot(tb::unwrap_rot(props.get("angles")));
-                let idx = add_gate(&mut umap, origin, rot);
-                if let Some(tag) = props.get("tag") {
-                    tagged_static_mesh_actors.insert(tag.to_string(), idx);
-                }
-            }
-            "info_parent" => {
-                let origin = tb2ue::point(tb::unwrap_vec3(props.get("origin")));
-                let idx = add_parent(&mut umap, origin);
-                if let Some(child) = props.get("child") {
-                    if child_to_parent.contains_key(child) {
-                        error!("multiple info_parent point to child tagged '{}'", child);
-                        panic!();
-                    }
-                    child_to_parent.insert(child.clone(), idx);
-                }
-                if let Some(dst) = props.get("destination") {
-                    if parent_to_marker.contains_key(&idx) {
-                        error!(
-                            "info_parent points to multiple info_marker tagged '{}'",
-                            dst
-                        );
-                        panic!();
-                    }
-                    parent_to_marker.insert(idx, dst.clone());
-                }
-                if let Some(tag) = props.get("tag") {
-                    if !parents.contains_key(tag) {
-                        parents.insert(tag.clone(), vec![]);
-                    }
-                    parents.get_mut(tag).unwrap().push(idx);
-                }
-            }
-            "info_marker" => {
-                let origin = tb2ue::point(tb::unwrap_vec3(props.get("origin")));
-                let quat = tb2ue::quat(tb::unwrap_rot(props.get("angles")));
-                if let Some(tag) = props.get("tag") {
-                    markers.insert(tag.clone(), Marker { origin, quat });
-                }
-            }
-            "func_switch" => {
-                let origin = tb2ue::point(tb::unwrap_vec3(props.get("origin")));
-                let rot = tb2ue::rot(tb::unwrap_rot(props.get("angles")));
-                let idx = add_switch(&mut umap, origin, rot);
-                if let Some(target) = props.get("target") {
-                    switches.push((idx, target.clone()));
-                }
-            }
-            "info_preset" => {
-                let title = tb::unwrap_string_or(props.get("title"), &map_name);
-                let author = tb::unwrap_string_or(props.get("author"), "unknown");
-                let start = tb::unwrap_string_or(props.get("start"), "gameStart");
-                let upgrades = upgrade_data::parse_flags(&tb::unwrap_flags(props.get("upgrades")));
-                game_preset::pak_add(
-                    &mut pak,
-                    &GamePreset {
-                        title: title.to_string(),
-                        author: author.to_string(),
-                        level_name: map_name.to_string(),
-                        player_start_tag: start.to_string(),
-                        upgrades,
-                        level_display_names: HashMap::new(),
-                    },
-                );
-            }
-            _ => {}
-        };
-    }
-    let elapsed = start.elapsed();
-    info!("World brushes: {}", num_world_brushes);
-    info!("Hazard zone brushes: {}", num_hazard_brushes);
-    println!(
-        "Generated level in {}.",
-        humantime::format_duration(Duration::from_millis(elapsed.as_millis() as u64))
-    );
-
-    info!("Linking actors...");
-
-    // Link save points to player starts
-    for (save_idx, save_target) in save_points {
-        let save_export = umap.get_export_mut(save_idx).unwrap();
-        let start_idx = if let Some(idx) = player_starts.get(&save_target) {
-            info!(
-                "save_point @{} -> player_start @{} ({})",
-                save_idx, idx.index, save_target
-            );
-            *idx
-        } else {
-            warn!(
-                "save_point @{} could not find player_start with tag: {}",
-                save_idx, save_target
-            );
-            PackageIndex::new(0)
-        };
-        set_obj_property(save_export, "associatedPlayerStart", start_idx);
-    }
-
-    // Link safe zones to respawn anchors
-    for (idx, maybe_target) in safe_zones {
-        let root = get_linked_export(&umap, idx, "RootComponent").unwrap();
-        let safe_zone_location = get_location(&root);
-
-        let (offset, yaw) = if let Some(target) = maybe_target
-            && let Some((anchor_location, yaw)) = respawn_anchors.get(&target)
-        {
-            (anchor_location - safe_zone_location, *yaw)
-        } else {
-            (DVec3::default(), 0.0)
-        };
-        info!(
-            "safe_zone @{}: respawn_anchor w/ relative offset {}",
-            idx, offset
-        );
-
-        set_vec_property(umap.get_export_mut(idx).unwrap(), "offset", offset);
-        set_float_property(umap.get_export_mut(idx).unwrap(), "yaw", yaw);
-    }
-
-    // Link parents to childs
-    for (child_tag, parent_idx) in child_to_parent {
-        let parent_root = get_linked_export(&umap, parent_idx, "RootComponent").unwrap();
-        let parent_location = get_location(&parent_root);
-
-        let Some(child_idx) = tagged_static_mesh_actors.get(&child_tag) else {
-            warn!("couldn't find child with tag: {}", child_tag);
-            continue;
-        };
-
-        let child_root = get_linked_export(&umap, *child_idx, "RootComponent").unwrap();
-        let child_location = get_location(&child_root);
-        let child_rotation = get_rotation(&child_root);
-
-        let relative_location = child_location - parent_location;
-
-        let donor_static_mesh_component =
-            get_linked_export_mut(&mut umap, *child_idx, "StaticMeshComponent").unwrap();
-        let donor_static_mesh_import_idx = set_obj_property(
-            donor_static_mesh_component,
-            "StaticMesh",
-            PackageIndex::new(0),
-        );
-        let donor_override_materials =
-            find_array_property_mut(donor_static_mesh_component, "OverrideMaterials")
-                .map(|v| v.clone());
-        deep_delete_export(&mut umap, *child_idx);
-
-        let recipient_static_mesh_component =
-            get_linked_export_mut(&mut umap, parent_idx, "StaticMesh").unwrap();
-        set_obj_property(
-            recipient_static_mesh_component,
-            "StaticMesh",
-            donor_static_mesh_import_idx,
-        );
-        set_location(recipient_static_mesh_component, relative_location);
-        set_rotation(recipient_static_mesh_component, child_rotation);
-        let recipient_override_materials =
-            find_array_property_mut(recipient_static_mesh_component, "OverrideMaterials");
-        if let Some(recipient_override_materials) = recipient_override_materials
-            && let Some(donor_override_materials) = donor_override_materials
-        {
-            recipient_override_materials.value = donor_override_materials.value;
-        }
-    }
-
-    // Link parents to markers
-    for (parent_idx, marker_tag) in parent_to_marker {
-        let parent_root = get_linked_export(&umap, parent_idx, "RootComponent").unwrap();
-        let parent_location = get_location(&parent_root);
-
-        let Some(marker) = markers.get(&marker_tag) else {
-            warn!("couldn't find marker with tag: {}", marker_tag);
-            continue;
-        };
-
-        let relative_location = marker.origin - parent_location;
-
-        let parent_export = umap.get_export_mut(parent_idx).unwrap();
-        let state_positions = find_array_property_mut(parent_export, "statePositions").unwrap();
-        // TODO this is very hardcoded and not flexible (doesn't support multiple positions, assumes
-        // there is a second state position in the template actor) and this deep nesting sucks and
-        // the error handling sucks
-        if let unreal_asset::properties::Property::StructProperty(struct_prop) =
-            &mut state_positions.value[1]
-        {
-            for prop in &mut struct_prop.value {
-                if let unreal_asset::properties::Property::StructProperty(struct_prop) = prop {
-                    // TODO set rotation as well
-                    if struct_prop
-                        .name
-                        .get_content(|content| content == "Rotation")
-                    {
-                        for prop in &mut struct_prop.value {
-                            if let unreal_asset::properties::Property::QuatProperty(quat_prop) =
-                                prop
-                            {
-                                quat_prop.value.x.0 = marker.quat.x;
-                                quat_prop.value.y.0 = marker.quat.y;
-                                quat_prop.value.z.0 = marker.quat.z;
-                                quat_prop.value.w.0 = marker.quat.w;
-                            }
-                        }
-                    }
-                    if struct_prop
-                        .name
-                        .get_content(|content| content == "Translation")
-                    {
-                        for prop in &mut struct_prop.value {
-                            if let unreal_asset::properties::Property::VectorProperty(vec_prop) =
-                                prop
-                            {
-                                vec_prop.value.x.0 = relative_location.x;
-                                vec_prop.value.y.0 = relative_location.y;
-                                vec_prop.value.z.0 = relative_location.z;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Link switches to parents
-    for (switch_idx, parent_tag) in switches {
-        let Some(parent_idxs) = parents.get(&parent_tag) else {
-            warn!("couldn't find parent with tag: {}", parent_tag);
-            continue;
-        };
-
-        let switch_export = umap.get_export_mut(switch_idx).unwrap();
-        let associated_actors = find_array_property_mut(switch_export, "associatedActors").unwrap();
-        let prop = associated_actors.value[0].clone();
-        associated_actors.value.clear();
-
-        for parent_idx in parent_idxs {
-            let mut prop = prop.clone();
-            let unreal_asset::properties::Property::ObjectProperty(obj_prop) = &mut prop else {
-                panic!("associatedActors element is not an ObjectProperty");
-            };
-            obj_prop.value = *parent_idx;
-            associated_actors.value.push(prop);
-            info!("func_switch @{} -> info_parent @{}", switch_idx, parent_idx);
-        }
-
-        for parent_idx in parent_idxs {
-            switch_export
-                .get_base_export_mut()
-                .create_before_serialization_dependencies
-                .push(*parent_idx);
-        }
-    }
-
-    // rename level export (for swag only; seemingly inconsequential)
-    {
-        let fname = umap.add_fname(&map_name);
-        let idx = find_export(&umap, &[with_name("ModPack_Base")])
-            .expect("couldn't find export: ModPack_Base");
-        let export = umap.get_export_mut(idx).unwrap();
-        export.get_base_export_mut().object_name = fname;
-    }
-
-    // Remove reference actors.
-    {
-        let idxs = vec![
-            find_export(&umap, &[with_name("BP_Hazard_C")]).unwrap(),
-            find_export(&umap, &[with_name("BP_SafeZone_C")]).unwrap(),
-            find_export(&umap, &[with_name("BP_SavePoint_C")]).unwrap(),
-            find_export(&umap, &[with_name("BP_JumpBubble_C")]).unwrap(),
-            find_export(&umap, &[with_name("BP_UpgradeBase_C")]).unwrap(),
-            find_export(&umap, &[with_name("BP_NPC_C")]).unwrap(),
-            find_export(&umap, &[with_name("BP_HitSwitch_C")]).unwrap(),
-            find_export(&umap, &[with_name("BP_SwA_StaticMesh_C")]).unwrap(),
-            find_export(&umap, &[with_name("BP_ClimbPole_C")]).unwrap(),
-            find_export(&umap, &[with_name("BP_BounceHitter_C")]).unwrap(),
-            find_export(&umap, &[with_name("BP_TrialGate_C")]).unwrap(),
-            find_export(&umap, &[with_name("BP_TimeTrial_C")]).unwrap(),
-            find_export(&umap, &[with_name("BP_TransitionZone_C")]).unwrap(),
-            find_export(&umap, &[with_name("PlayerStart")]).unwrap(),
-            find_original_static_mesh_actor(&umap),
-            find_gate_static_mesh_actor(&umap),
-        ];
-
-        for idx in idxs {
-            deep_delete_export(&mut umap, idx);
-        }
-    }
-
-    // Design decision: any assets from mod packs that are used in this map are to be bundled with
-    // the map rather than be left referencing the mod pack itself, lest we open the door to broken
-    // references, mod pack version mismatch, etc. In other words, we're opting for static linking,
-    // not dynamic linking. Of course, this unfortunately means larger map pak sizes!
-
-    // Reroute imports to point to bundled assets.
-    reroute_imports(&mut umap, "ModPack_Base", &map_name);
-
-    let mut final_umap = std::io::Cursor::new(vec![]);
-    let mut final_uexp = std::io::Cursor::new(vec![]);
-    umap.write_data(&mut final_umap, Some(&mut final_uexp))
-        .expect("failed to serialize umap");
-
-    if args.also_unpak {
-        let unpak_dir = project_dir.join("unpak");
-        std::fs::create_dir_all(&unpak_dir).unwrap();
-        let map_name = map_name.to_string();
-        let umap_path = unpak_dir.join(&map_name).with_extension("umap");
-        let uexp_path = unpak_dir.join(&map_name).with_extension("uexp");
-        std::fs::write(&umap_path, final_umap.get_ref()).unwrap();
-        std::fs::write(&uexp_path, final_uexp.get_ref()).unwrap();
-        println!("(also-unpak) wrote to: {}", umap_path.to_string_lossy());
-    }
-
-    let umap_path = format!("Mods/Maps/{}.umap", map_name);
-    let uexp_path = format!("Mods/Maps/{}.uexp", map_name);
-    pak.write_file(&umap_path, true, final_umap.get_ref())
-        .expect("failed to write umap to pak");
-    pak.write_file(&uexp_path, true, final_uexp.get_ref())
-        .expect("failed to write uexp to pak");
-
-    for (name, uasset_bytes, uexp_bytes, ubulk_bytes) in MISE_FILES {
-        debug!("Rerouting imports in: {}", name);
-        let mut uasset = unreal_asset::Asset::new(
-            std::io::Cursor::new(uasset_bytes),
-            Some(std::io::Cursor::new(uexp_bytes)),
+        let mut umap = unreal_asset::Asset::new(
+            std::io::Cursor::new(MISE_UMAP),
+            Some(std::io::Cursor::new(MISE_UEXP)),
             unreal_asset::engine_version::EngineVersion::VER_UE5_1,
             None,
         )
-        .expect("failed to parse uasset");
+        .expect("failed to parse umap");
 
-        reroute_imports(&mut uasset, "ModPack_Base", &map_name);
+        let mut texture_collection = TextureCollection::bundled();
 
-        let mut uasset_bytes = vec![];
-        let mut uexp_bytes = vec![];
-        uasset
-            .write_data(
-                &mut std::io::Cursor::new(&mut uasset_bytes),
-                Some(&mut std::io::Cursor::new(&mut uexp_bytes)),
-            )
-            .unwrap();
+        for (&key, value) in texture_collection.iter_mut() {
+            let texture_path = format!("/Game/{}", key);
+            let material_path = pak_add_material(&mut pak, &texture_path, &map_name);
+            value.material_path = Some(material_path);
+        }
+
+        let mut num_world_brushes = 0;
+        let mut num_hazard_brushes = 0;
+
+        let mut switches: Vec<(PackageIndex, String)> = Vec::new();
+        let mut save_points: Vec<(PackageIndex, String)> = Vec::new();
+        // TODO remove Option<>
+        let mut safe_zones: Vec<(PackageIndex, Option<String>)> = Vec::new();
+
+        let mut markers: HashMap<String, Marker> = HashMap::new();
+        let mut respawn_anchors: HashMap<String, (DVec3, f32)> = HashMap::new();
+        let mut parents: HashMap<String, Vec<PackageIndex>> = HashMap::new();
+        let mut player_starts: HashMap<String, PackageIndex> = HashMap::new();
+        let mut child_to_parent: HashMap<String, PackageIndex> = HashMap::new();
+        let mut parent_to_marker: HashMap<PackageIndex, String> = HashMap::new();
+        let mut tagged_static_mesh_actors: HashMap<String, PackageIndex> = HashMap::new();
+
+        let start = Instant::now();
+        for ent in ast.0 {
+            let props: HashMap<String, String> = ent
+                .properties
+                .0
+                .into_iter()
+                .map(|p| (p.key, p.value))
+                .collect();
+            let Some(classname) = props.get("classname") else {
+                continue;
+            };
+            match classname.as_ref() {
+                "worldspawn" | "func_group" => {
+                    for brush in ent.brushes.0.into_iter() {
+                        let brush = tb2ue::brush(brush);
+                        num_world_brushes += 1;
+                        let name = format!("WorldBrush{}", num_world_brushes);
+                        let (abs_path, origin) =
+                            pak_add_brush(&mut pak, &brush, &map_name, &name, &texture_collection)
+                                .unwrap();
+                        let idx = add_static_mesh_import(&mut umap, &abs_path);
+                        add_static_mesh_actor(&mut umap, idx, origin);
+                    }
+                }
+                "trigger_transition_zone" => {
+                    let level = tb::unwrap_string_or(props.get("level"), "unspecified");
+                    let start = tb::unwrap_string_or(props.get("start"), "gameStart");
+                    for brush in ent.brushes.0.into_iter() {
+                        let brush = tb2ue::brush(brush);
+                        let obb = get_obb(&brush).unwrap_or_else(|err| {
+                            error!("trigger_transition_zone must be a box: {}", err);
+                            std::process::exit(1);
+                        });
+                        let _ = add_transition_zone_actor(&mut umap, &obb, level, start);
+                    }
+                }
+                "trigger_safe_zone" => {
+                    for brush in ent.brushes.0.into_iter() {
+                        let brush = tb2ue::brush(brush);
+                        let obb = get_obb(&brush).unwrap_or_else(|err| {
+                            error!("trigger_safe_zone must be a box: {}", err);
+                            std::process::exit(1);
+                        });
+                        let idx = add_safe_zone_actor(&mut umap, &obb);
+                        safe_zones.push((idx, props.get("target").map(|s| s.to_string())));
+                    }
+                }
+                "trigger_hazard_zone" => {
+                    for brush in ent.brushes.0.into_iter() {
+                        let brush = tb2ue::brush(brush);
+                        num_hazard_brushes += 1;
+                        let name = format!("HazardZoneBrush{}", num_hazard_brushes);
+                        let (abs_path, origin) =
+                            pak_add_brush(&mut pak, &brush, &map_name, &name, &texture_collection)
+                                .unwrap();
+                        let idx = add_static_mesh_import(&mut umap, &abs_path);
+                        add_hazard_actor(&mut umap, idx, origin);
+                    }
+                }
+                "info_respawn_anchor" => {
+                    let origin = tb2ue::point(tb::unwrap_vec3(props.get("origin")));
+                    let rot = tb2ue::rot(tb::unwrap_yaw(props.get("angle")));
+                    if let Some(tag) = props.get("tag") {
+                        respawn_anchors.insert(tag.to_string(), (origin, rot.yaw as f32));
+                    }
+                }
+                "info_player_start" => {
+                    let origin = tb2ue::point(tb::unwrap_vec3(props.get("origin")));
+                    let rot = tb2ue::rot(tb::unwrap_yaw(props.get("angle")));
+                    let tag = tb::unwrap_string_or(props.get("tag"), "gameStart");
+                    let idx = add_player_start(&mut umap, origin, rot, tag);
+                    player_starts.insert(tag.to_string(), idx);
+                }
+                "item_upgrade" => {
+                    let origin = tb2ue::point(tb::unwrap_vec3(props.get("origin")));
+                    let upgrade_name = tb::unwrap_string_or(props.get("upgrade"), "attack");
+                    let quick_pickup = tb::unwrap_bool(props.get("quick_pickup"));
+                    add_upgrade(&mut umap, origin, upgrade_name, quick_pickup);
+                }
+                "misc_jump_bubble" => {
+                    let origin = tb2ue::point(tb::unwrap_vec3(props.get("origin")));
+                    add_jump_bubble(&mut umap, origin);
+                }
+                "misc_save_point" => {
+                    let origin = tb2ue::point(tb::unwrap_vec3(props.get("origin")));
+                    let target = tb::unwrap_string_or(props.get("target"), "gameStart");
+                    let idx = add_save_point(&mut umap, origin);
+                    save_points.push((idx, target.to_string()));
+                }
+                "prop_gate" => {
+                    let origin = tb2ue::point(tb::unwrap_vec3(props.get("origin")));
+                    let rot = tb2ue::rot(tb::unwrap_rot(props.get("angles")));
+                    let idx = add_gate(&mut umap, origin, rot);
+                    if let Some(tag) = props.get("tag") {
+                        tagged_static_mesh_actors.insert(tag.to_string(), idx);
+                    }
+                }
+                "info_parent" => {
+                    let origin = tb2ue::point(tb::unwrap_vec3(props.get("origin")));
+                    let idx = add_parent(&mut umap, origin);
+                    if let Some(child) = props.get("child") {
+                        if child_to_parent.contains_key(child) {
+                            error!("multiple info_parent point to child tagged '{}'", child);
+                            panic!();
+                        }
+                        child_to_parent.insert(child.clone(), idx);
+                    }
+                    if let Some(dst) = props.get("destination") {
+                        if parent_to_marker.contains_key(&idx) {
+                            error!(
+                                "info_parent points to multiple info_marker tagged '{}'",
+                                dst
+                            );
+                            panic!();
+                        }
+                        parent_to_marker.insert(idx, dst.clone());
+                    }
+                    if let Some(tag) = props.get("tag") {
+                        if !parents.contains_key(tag) {
+                            parents.insert(tag.clone(), vec![]);
+                        }
+                        parents.get_mut(tag).unwrap().push(idx);
+                    }
+                }
+                "info_marker" => {
+                    let origin = tb2ue::point(tb::unwrap_vec3(props.get("origin")));
+                    let quat = tb2ue::quat(tb::unwrap_rot(props.get("angles")));
+                    if let Some(tag) = props.get("tag") {
+                        markers.insert(tag.clone(), Marker { origin, quat });
+                    }
+                }
+                "func_switch" => {
+                    let origin = tb2ue::point(tb::unwrap_vec3(props.get("origin")));
+                    let rot = tb2ue::rot(tb::unwrap_rot(props.get("angles")));
+                    let idx = add_switch(&mut umap, origin, rot);
+                    if let Some(target) = props.get("target") {
+                        switches.push((idx, target.clone()));
+                    }
+                }
+                "info_preset" => {
+                    let title = tb::unwrap_string_or(props.get("title"), &map_name);
+                    let author = tb::unwrap_string_or(props.get("author"), "unknown");
+                    let start = tb::unwrap_string_or(props.get("start"), "gameStart");
+                    let upgrades =
+                        upgrade_data::parse_flags(&tb::unwrap_flags(props.get("upgrades")));
+                    game_preset::pak_add(
+                        &mut pak,
+                        &GamePreset {
+                            title: title.to_string(),
+                            author: author.to_string(),
+                            level_name: map_name.to_string(),
+                            player_start_tag: start.to_string(),
+                            upgrades,
+                            level_display_names: HashMap::new(),
+                        },
+                    );
+                }
+                _ => {}
+            };
+        }
+        info!("World brushes: {}", num_world_brushes);
+        info!("Hazard zone brushes: {}", num_hazard_brushes);
+
+        info!("Linking actors...");
+
+        // Link save points to player starts
+        for (save_idx, save_target) in save_points {
+            let save_export = umap.get_export_mut(save_idx).unwrap();
+            let start_idx = if let Some(idx) = player_starts.get(&save_target) {
+                info!(
+                    "save_point @{} -> player_start @{} ({})",
+                    save_idx, idx.index, save_target
+                );
+                *idx
+            } else {
+                warn!(
+                    "save_point @{} could not find player_start with tag: {}",
+                    save_idx, save_target
+                );
+                PackageIndex::new(0)
+            };
+            set_obj_property(save_export, "associatedPlayerStart", start_idx);
+        }
+
+        // Link safe zones to respawn anchors
+        for (idx, maybe_target) in safe_zones {
+            let root = get_linked_export(&umap, idx, "RootComponent").unwrap();
+            let safe_zone_location = get_location(&root);
+
+            let (offset, yaw) = if let Some(target) = maybe_target
+                && let Some((anchor_location, yaw)) = respawn_anchors.get(&target)
+            {
+                (anchor_location - safe_zone_location, *yaw)
+            } else {
+                (DVec3::default(), 0.0)
+            };
+            info!(
+                "safe_zone @{}: respawn_anchor w/ relative offset {}",
+                idx, offset
+            );
+
+            set_vec_property(umap.get_export_mut(idx).unwrap(), "offset", offset);
+            set_float_property(umap.get_export_mut(idx).unwrap(), "yaw", yaw);
+        }
+
+        // Link parents to childs
+        for (child_tag, parent_idx) in child_to_parent {
+            let parent_root = get_linked_export(&umap, parent_idx, "RootComponent").unwrap();
+            let parent_location = get_location(&parent_root);
+
+            let Some(child_idx) = tagged_static_mesh_actors.get(&child_tag) else {
+                warn!("couldn't find child with tag: {}", child_tag);
+                continue;
+            };
+
+            let child_root = get_linked_export(&umap, *child_idx, "RootComponent").unwrap();
+            let child_location = get_location(&child_root);
+            let child_rotation = get_rotation(&child_root);
+
+            let relative_location = child_location - parent_location;
+
+            let donor_static_mesh_component =
+                get_linked_export_mut(&mut umap, *child_idx, "StaticMeshComponent").unwrap();
+            let donor_static_mesh_import_idx = set_obj_property(
+                donor_static_mesh_component,
+                "StaticMesh",
+                PackageIndex::new(0),
+            );
+            let donor_override_materials =
+                find_array_property_mut(donor_static_mesh_component, "OverrideMaterials")
+                    .map(|v| v.clone());
+            deep_delete_export(&mut umap, *child_idx);
+
+            let recipient_static_mesh_component =
+                get_linked_export_mut(&mut umap, parent_idx, "StaticMesh").unwrap();
+            set_obj_property(
+                recipient_static_mesh_component,
+                "StaticMesh",
+                donor_static_mesh_import_idx,
+            );
+            set_location(recipient_static_mesh_component, relative_location);
+            set_rotation(recipient_static_mesh_component, child_rotation);
+            let recipient_override_materials =
+                find_array_property_mut(recipient_static_mesh_component, "OverrideMaterials");
+            if let Some(recipient_override_materials) = recipient_override_materials
+                && let Some(donor_override_materials) = donor_override_materials
+            {
+                recipient_override_materials.value = donor_override_materials.value;
+            }
+        }
+
+        // Link parents to markers
+        for (parent_idx, marker_tag) in parent_to_marker {
+            let parent_root = get_linked_export(&umap, parent_idx, "RootComponent").unwrap();
+            let parent_location = get_location(&parent_root);
+
+            let Some(marker) = markers.get(&marker_tag) else {
+                warn!("couldn't find marker with tag: {}", marker_tag);
+                continue;
+            };
+
+            let relative_location = marker.origin - parent_location;
+
+            let parent_export = umap.get_export_mut(parent_idx).unwrap();
+            let state_positions = find_array_property_mut(parent_export, "statePositions").unwrap();
+            // TODO this is very hardcoded and not flexible (doesn't support multiple positions, assumes
+            // there is a second state position in the template actor) and this deep nesting sucks and
+            // the error handling sucks
+            if let unreal_asset::properties::Property::StructProperty(struct_prop) =
+                &mut state_positions.value[1]
+            {
+                for prop in &mut struct_prop.value {
+                    if let unreal_asset::properties::Property::StructProperty(struct_prop) = prop {
+                        // TODO set rotation as well
+                        if struct_prop
+                            .name
+                            .get_content(|content| content == "Rotation")
+                        {
+                            for prop in &mut struct_prop.value {
+                                if let unreal_asset::properties::Property::QuatProperty(quat_prop) =
+                                    prop
+                                {
+                                    quat_prop.value.x.0 = marker.quat.x;
+                                    quat_prop.value.y.0 = marker.quat.y;
+                                    quat_prop.value.z.0 = marker.quat.z;
+                                    quat_prop.value.w.0 = marker.quat.w;
+                                }
+                            }
+                        }
+                        if struct_prop
+                            .name
+                            .get_content(|content| content == "Translation")
+                        {
+                            for prop in &mut struct_prop.value {
+                                if let unreal_asset::properties::Property::VectorProperty(
+                                    vec_prop,
+                                ) = prop
+                                {
+                                    vec_prop.value.x.0 = relative_location.x;
+                                    vec_prop.value.y.0 = relative_location.y;
+                                    vec_prop.value.z.0 = relative_location.z;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Link switches to parents
+        for (switch_idx, parent_tag) in switches {
+            let Some(parent_idxs) = parents.get(&parent_tag) else {
+                warn!("couldn't find parent with tag: {}", parent_tag);
+                continue;
+            };
+
+            let switch_export = umap.get_export_mut(switch_idx).unwrap();
+            let associated_actors =
+                find_array_property_mut(switch_export, "associatedActors").unwrap();
+            let prop = associated_actors.value[0].clone();
+            associated_actors.value.clear();
+
+            for parent_idx in parent_idxs {
+                let mut prop = prop.clone();
+                let unreal_asset::properties::Property::ObjectProperty(obj_prop) = &mut prop else {
+                    panic!("associatedActors element is not an ObjectProperty");
+                };
+                obj_prop.value = *parent_idx;
+                associated_actors.value.push(prop);
+                info!("func_switch @{} -> info_parent @{}", switch_idx, parent_idx);
+            }
+
+            for parent_idx in parent_idxs {
+                switch_export
+                    .get_base_export_mut()
+                    .create_before_serialization_dependencies
+                    .push(*parent_idx);
+            }
+        }
+
+        // rename level export (for swag only; seemingly inconsequential)
+        {
+            let fname = umap.add_fname(&map_name);
+            let idx = find_export(&umap, &[with_name("ModPack_Base")])
+                .expect("couldn't find export: ModPack_Base");
+            let export = umap.get_export_mut(idx).unwrap();
+            export.get_base_export_mut().object_name = fname;
+        }
+
+        // Remove reference actors.
+        {
+            let idxs = vec![
+                find_export(&umap, &[with_name("BP_Hazard_C")]).unwrap(),
+                find_export(&umap, &[with_name("BP_SafeZone_C")]).unwrap(),
+                find_export(&umap, &[with_name("BP_SavePoint_C")]).unwrap(),
+                find_export(&umap, &[with_name("BP_JumpBubble_C")]).unwrap(),
+                find_export(&umap, &[with_name("BP_UpgradeBase_C")]).unwrap(),
+                find_export(&umap, &[with_name("BP_NPC_C")]).unwrap(),
+                find_export(&umap, &[with_name("BP_HitSwitch_C")]).unwrap(),
+                find_export(&umap, &[with_name("BP_SwA_StaticMesh_C")]).unwrap(),
+                find_export(&umap, &[with_name("BP_ClimbPole_C")]).unwrap(),
+                find_export(&umap, &[with_name("BP_BounceHitter_C")]).unwrap(),
+                find_export(&umap, &[with_name("BP_TrialGate_C")]).unwrap(),
+                find_export(&umap, &[with_name("BP_TimeTrial_C")]).unwrap(),
+                find_export(&umap, &[with_name("BP_TransitionZone_C")]).unwrap(),
+                find_export(&umap, &[with_name("PlayerStart")]).unwrap(),
+                find_original_static_mesh_actor(&umap),
+                find_gate_static_mesh_actor(&umap),
+            ];
+
+            for idx in idxs {
+                deep_delete_export(&mut umap, idx);
+            }
+        }
+
+        // Design decision: any assets from mod packs that are used in this map are to be bundled with
+        // the map rather than be left referencing the mod pack itself, lest we open the door to broken
+        // references, mod pack version mismatch, etc. In other words, we're opting for static linking,
+        // not dynamic linking. Of course, this unfortunately means larger map pak sizes!
+
+        // Reroute imports to point to bundled assets.
+        reroute_imports(&mut umap, "ModPack_Base", &map_name);
+
+        let mut final_umap = std::io::Cursor::new(vec![]);
+        let mut final_uexp = std::io::Cursor::new(vec![]);
+        umap.write_data(&mut final_umap, Some(&mut final_uexp))
+            .expect("failed to serialize umap");
 
         if args.also_unpak {
+            let unpak_dir = project_dir.join("unpak");
+            std::fs::create_dir_all(&unpak_dir).unwrap();
             let map_name = map_name.to_string();
-            let unpak_assets_dir = project_dir.join("unpak").join(map_name);
-            std::fs::create_dir_all(&unpak_assets_dir).unwrap();
-            let uasset_path = unpak_assets_dir.join(name).with_extension("uasset");
-            let uexp_path = unpak_assets_dir.join(name).with_extension("uexp");
-            std::fs::write(&uasset_path, &uasset_bytes).unwrap();
-            std::fs::write(&uexp_path, &uexp_bytes).unwrap();
-            println!("(also-unpak) wrote to: {}", uasset_path.to_string_lossy());
+            let umap_path = unpak_dir.join(&map_name).with_extension("umap");
+            let uexp_path = unpak_dir.join(&map_name).with_extension("uexp");
+            std::fs::write(&umap_path, final_umap.get_ref()).unwrap();
+            std::fs::write(&uexp_path, final_uexp.get_ref()).unwrap();
+            println!("(also-unpak) wrote to: {}", umap_path.to_string_lossy());
         }
 
-        let uasset_path = format!("Mods/Maps/{}/{}.uasset", map_name, name);
-        let uexp_path = format!("Mods/Maps/{}/{}.uexp", map_name, name);
-        pak.write_file(&uasset_path, true, uasset_bytes)
-            .unwrap_or_else(|_| panic!("failed to write: {}", uasset_path));
-        pak.write_file(&uexp_path, true, uexp_bytes)
-            .unwrap_or_else(|_| panic!("failed to write: {}", uexp_path));
-        if ubulk_bytes.len() > 0 {
-            let ubulk_path = format!("Mods/Maps/{}/{}.ubulk", map_name, name);
-            pak.write_file(&ubulk_path, true, ubulk_bytes)
-                .unwrap_or_else(|_| panic!("failed to write: {}", ubulk_path));
+        let umap_path = format!("Mods/Maps/{}.umap", map_name);
+        let uexp_path = format!("Mods/Maps/{}.uexp", map_name);
+        pak.write_file(&umap_path, true, final_umap.get_ref())
+            .expect("failed to write umap to pak");
+        pak.write_file(&uexp_path, true, final_uexp.get_ref())
+            .expect("failed to write uexp to pak");
+
+        for (name, uasset_bytes, uexp_bytes, ubulk_bytes) in MISE_FILES {
+            debug!("Rerouting imports in: {}", name);
+            let mut uasset = unreal_asset::Asset::new(
+                std::io::Cursor::new(uasset_bytes),
+                Some(std::io::Cursor::new(uexp_bytes)),
+                unreal_asset::engine_version::EngineVersion::VER_UE5_1,
+                None,
+            )
+            .expect("failed to parse uasset");
+
+            reroute_imports(&mut uasset, "ModPack_Base", &map_name);
+
+            let mut uasset_bytes = vec![];
+            let mut uexp_bytes = vec![];
+            uasset
+                .write_data(
+                    &mut std::io::Cursor::new(&mut uasset_bytes),
+                    Some(&mut std::io::Cursor::new(&mut uexp_bytes)),
+                )
+                .unwrap();
+
+            if args.also_unpak {
+                let map_name = map_name.to_string();
+                let unpak_assets_dir = project_dir.join("unpak").join(map_name);
+                std::fs::create_dir_all(&unpak_assets_dir).unwrap();
+                let uasset_path = unpak_assets_dir.join(name).with_extension("uasset");
+                let uexp_path = unpak_assets_dir.join(name).with_extension("uexp");
+                std::fs::write(&uasset_path, &uasset_bytes).unwrap();
+                std::fs::write(&uexp_path, &uexp_bytes).unwrap();
+                println!("(also-unpak) wrote to: {}", uasset_path.to_string_lossy());
+            }
+
+            let uasset_path = format!("Mods/Maps/{}/{}.uasset", map_name, name);
+            let uexp_path = format!("Mods/Maps/{}/{}.uexp", map_name, name);
+            pak.write_file(&uasset_path, true, uasset_bytes)
+                .unwrap_or_else(|_| panic!("failed to write: {}", uasset_path));
+            pak.write_file(&uexp_path, true, uexp_bytes)
+                .unwrap_or_else(|_| panic!("failed to write: {}", uexp_path));
+            if ubulk_bytes.len() > 0 {
+                let ubulk_path = format!("Mods/Maps/{}/{}.ubulk", map_name, name);
+                pak.write_file(&ubulk_path, true, ubulk_bytes)
+                    .unwrap_or_else(|_| panic!("failed to write: {}", ubulk_path));
+            }
         }
+
+        let elapsed = start.elapsed();
+        println!(
+            "Built map in {}.",
+            humantime::format_duration(Duration::from_millis(elapsed.as_millis() as u64))
+        );
     }
 
     let mut writer = pak.write_index().expect("failed to write pak file");
@@ -1511,6 +1572,8 @@ fn main() {
     println!(
         "Wrote {} to \"{}\"",
         humansize::format_size(bytes_written, humansize::DECIMAL),
-        args.out_path.to_string_lossy()
+        out_pak_path.to_string_lossy()
     );
+
+    Ok(())
 }
