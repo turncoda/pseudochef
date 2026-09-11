@@ -80,8 +80,14 @@ If you have the quickstart mod installed, you can also start the game with '-spa
 
 Goatling.
 
+To add dialogue, add properties of the form: text0, text1, text2, etc.
+
+Dialogue text supports Expressive Text syntax (the Unreal Engine plugin Pseudoregalia uses). Have a look at the documentation: https://expressivetext.com/docs/3a7f668e-4115-4abc-ad99-f835a3eff81b
+
 "
-[]
+[
+    text0(string) : "First line of dialogue" : "(placeholder text)"
+]
 
 // === BP_SavePoint ===========================================================
 //   * Box relative location: 0, 0, 107.400539

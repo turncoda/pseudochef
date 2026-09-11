@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use glam::DVec3;
 
 /// In relation to right-handed Eulerian angles, TB defines its rotations as follows:
@@ -97,4 +99,21 @@ pub fn unwrap_yaw<S: AsRef<str>>(opt: Option<S>) -> PitchYawRoll {
 
 pub fn unwrap_string_or<'a, S: AsRef<str>>(opt: Option<&'a S>, default: &'a str) -> &'a str {
     opt.map(|s| s.as_ref()).unwrap_or(default)
+}
+
+pub fn unwrap_strings<'a, S: AsRef<str>>(
+    props: &'a HashMap<String, String>,
+    key: S,
+) -> Vec<&'a str> {
+    let mut result = vec![];
+    let mut i = 0;
+    let mut k = format!("{}{}", key.as_ref(), i);
+    let mut v = props.get(&k);
+    while v.is_some() {
+        result.push(v.unwrap().as_ref());
+        i += 1;
+        k = format!("{}{}", key.as_ref(), i);
+        v = props.get(&k);
+    }
+    result
 }

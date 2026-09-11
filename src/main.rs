@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use unreal_asset::exports::ExportBaseTrait;
 use unreal_asset::exports::ExportNormalTrait;
+use unreal_asset::properties::Property;
 use unreal_asset::types::{FName, PackageIndex};
 
 mod texture_collection;
@@ -526,6 +527,33 @@ fn pak_add_brush<W: Write + Seek>(
         .expect("failed to write uexp to pak");
     let abs_path_no_ext = format!("/Game/Mods/Maps/{}/gen/{}", level_name, asset_name);
     Some((abs_path_no_ext, origin))
+}
+
+fn add_goatling<C: Read + Seek>(
+    umap: &mut unreal_asset::Asset<C>,
+    origin: DVec3,
+    rot: ue::PitchYawRoll,
+    texts: &[&str],
+) {
+    let idx = find_export(umap, &[with_name("BP_NPC_C")]).unwrap();
+    let idx = deep_clone_export(umap, idx);
+    add_actor_to_level(umap, idx);
+
+    let export = umap.get_export_mut(idx).unwrap();
+    let array_prop = find_array_property_mut(export, "textWindows").unwrap();
+    let Property::TextProperty(base_text_prop) = array_prop.value[0].clone() else {
+        panic!();
+    };
+    for text in texts {
+        let mut new_text_prop = base_text_prop.clone();
+        new_text_prop.culture_invariant_string = Some(text.to_string());
+        array_prop.value.push(new_text_prop.into());
+    }
+    array_prop.value.remove(0);
+
+    let root = get_linked_export_mut(umap, idx, "RootComponent").unwrap();
+    set_location(root, origin);
+    set_rotation(root, rot);
 }
 
 fn add_static_mesh_import<C: Read + Seek>(
@@ -1195,6 +1223,12 @@ fn main() -> std::io::Result<()> {
                     let target = tb::unwrap_string_or(props.get("target"), "gameStart");
                     let idx = add_save_point(&mut umap, origin);
                     save_points.push((idx, target.to_string()));
+                }
+                "npc_goatling" => {
+                    let origin = tb2ue::point(tb::unwrap_vec3(props.get("origin")));
+                    let rot = tb2ue::rot(tb::unwrap_yaw(props.get("angle")));
+                    let texts = tb::unwrap_strings(&props, "text");
+                    add_goatling(&mut umap, origin, rot, &texts);
                 }
                 "prop_gate" => {
                     let origin = tb2ue::point(tb::unwrap_vec3(props.get("origin")));
